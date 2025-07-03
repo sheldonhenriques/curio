@@ -1,6 +1,4 @@
-// app/projects/page.js
 'use client';
-
 import { Sidebar } from '@/components/layout/Sidebar';
 import { ProjectHeader } from '@/components/project/ProjectHeader';
 import { ProjectFilters } from '@/components/project/ProjectFilters';
@@ -25,7 +23,8 @@ const DashboardPage = () => {
     <div className="min-h-screen bg-white dark:bg-black">
       <Sidebar />
       
-      <div className="ml-64 p-6">
+      {/* Main content with responsive left margin */}
+      <div className="ml-16 transition-all duration-300 px-6 py-4">
         <ProjectHeader onNewProject={handleNewProject} />
         
         <ProjectFilters
