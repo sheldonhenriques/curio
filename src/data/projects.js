@@ -46,7 +46,7 @@ export const projectsData = [
     updatedAt: "3 days ago",
     status: "overdue",
     tags: ["Design", "Development"],
-    team: ["JL", "RT", "OM", "+1"],
+    team: ["JL", "RT", "OM", "SH", "BL"],
     sections: [
       { name: "Website", status: "Not Started" },
       { name: "Design", status: "Concept" },

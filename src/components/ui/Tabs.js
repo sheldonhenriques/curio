@@ -1,6 +1,6 @@
 export const Tabs = ({ tabs, activeTab, onTabChange }) => {
   return (
-    <div className="flex items-center gap-1 border-b border-gray-200">
+    <div className="flex items-center w-3/4 gap-1 border-b border-gray-200 dark:border-gray-600">
       {tabs.map(tab => (
         <button
           key={tab.id}

@@ -22,7 +22,7 @@ const DashboardPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-black">
+    <div className="min-h-screen bg-white dark:bg-black">
       <Sidebar />
       
       <div className="ml-64 p-6">

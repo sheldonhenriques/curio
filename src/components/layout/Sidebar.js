@@ -5,7 +5,7 @@ export const Sidebar = () => {
     <div className="fixed left-0 top-0 h-full w-64 bg-white dark:bg-black border-r border-gray-200 dark:border-gray-700 p-4">
       {/* Add toggle to header */}
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-xl font-bold text-gray-900 dark:text-white">Dashboard</h2>
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Curio</h1>
       </div>
 
       <nav className="space-y-2">
