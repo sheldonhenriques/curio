@@ -9,11 +9,11 @@ export const ProjectCard = ({ project, onToggleStar }) => {
   const colorClass = COLOR_THEMES[project.color]?.card || 'border-t-gray-500 bg-gray-50';
 
   return (
-    <div className={`bg-white rounded-lg shadow-sm border border-gray-200 border-t-4 p-6`}>
+    <div className={`bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-gray-200 dark:border-gray-800 border-t-4 p-6`}>
       {/* Header */}
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-2">
-          <h3 className="text-lg font-semibold text-gray-900">{project.title}</h3>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{project.title}</h3>
           <button
             onClick={() => onToggleStar(project.id)}
             className={`p-1 rounded transition-colors ${
@@ -29,7 +29,7 @@ export const ProjectCard = ({ project, onToggleStar }) => {
       </div>
 
       {/* Description */}
-      <p className="text-sm text-gray-600 mb-6">{project.description}</p>
+      <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">{project.description}</p>
 
       {/* Project sections */}
       <ProjectSections sections={project.sections} title={project.title} />
@@ -41,9 +41,9 @@ export const ProjectCard = ({ project, onToggleStar }) => {
             <div className="w-4 h-4 border-2 border-gray-300 rounded-sm flex items-center justify-center">
               <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
             </div>
-            <span className="text-sm font-medium text-gray-700">Progress</span>
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-500">Progress</span>
           </div>
-          <span className="text-sm text-gray-600">
+          <span className="text-sm text-gray-600  dark:text-gray-400">
             {project.progress}/{project.totalTasks} tasks
           </span>
         </div>
@@ -56,7 +56,7 @@ export const ProjectCard = ({ project, onToggleStar }) => {
 
       {/* Footer */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-sm text-gray-500">
+        <div className="flex items-center gap-2 text-sm text-gray-500  dark:text-gray-300">
           <Clock size={14} />
           <span>Updated {project.updatedAt}</span>
         </div>
