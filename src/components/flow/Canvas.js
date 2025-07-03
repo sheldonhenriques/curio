@@ -11,9 +11,16 @@ import ReactFlow, {
 } from 'reactflow';
 
 import 'reactflow/dist/style.css';
+import ChecklistNode from '@/components/nodes/ChecklistNode';
+import { checklistNodes } from '@/data/nodes'
+
+const nodeTypes = {
+  checklist: ChecklistNode,
+};
+
 
 export default function Canvas() {
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState(checklistNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
   const onConnect = useCallback(
@@ -30,6 +37,7 @@ export default function Canvas() {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         fitView
+        nodeTypes={nodeTypes}
       >
         <Controls />
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
