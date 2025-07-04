@@ -12,10 +12,12 @@ import ReactFlow, {
 
 import 'reactflow/dist/style.css';
 import ChecklistNode from '@/components/nodes/ChecklistNode';
+import WebBrowserNode from '@/components/nodes/WebBrowserNode';
 import { checklistNodes } from '@/data/nodes'
 
 const nodeTypes = {
   checklist: ChecklistNode,
+  webBrowser: WebBrowserNode,
 };
 
 

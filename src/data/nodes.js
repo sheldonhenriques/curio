@@ -40,5 +40,20 @@ export const checklistNodes = [
         { id: 4, text: 'Expand to enterprise market', completed: false }
       ]
     }
+  },
+  {
+    id: 'web-1',
+    type: 'webBrowser',
+    position: { x: 100, y: 450 },
+    data: {
+      url: 'https://docs.github.com/en',
+      title: 'Product Documentation',
+      lastVisited: '7/3/2025 10:20 AM',
+      favicon: '🌐',
+      isLoading: false,
+      canGoBack: false,
+      canGoForward: false,
+      isRefreshing: false
+    }
   }
 ];
