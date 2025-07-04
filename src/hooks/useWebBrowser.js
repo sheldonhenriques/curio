@@ -10,36 +10,57 @@ export const useWebBrowser = (initialData, nodeId) => {
       lastVisited: new Date().toLocaleString()
     }));
 
-    // Simulate refresh delay
+    // Force iframe reload by changing URL slightly
+    const currentUrl = nodeData.url;
+    const separator = currentUrl.includes('?') ? '&' : '?';
+    const refreshUrl = `${currentUrl}${separator}_refresh=${Date.now()}`;
+    
+    setNodeData(prev => ({
+      ...prev,
+      url: refreshUrl,
+      isLoading: true
+    }));
+
     setTimeout(() => {
       setNodeData(prev => ({
         ...prev,
         isRefreshing: false
       }));
     }, 1000);
-  }, []);
+  }, [nodeData.url]);
 
   const handleUrlChange = useCallback((newUrl) => {
+    // Validate URL format
+    if (!newUrl.startsWith('http://') && !newUrl.startsWith('https://')) {
+      newUrl = 'https://' + newUrl;
+    }
+
     setNodeData(prev => ({
       ...prev,
       url: newUrl,
       isLoading: true,
       lastVisited: new Date().toLocaleString()
     }));
+  }, []);
 
-    // Simulate loading
-    setTimeout(() => {
-      setNodeData(prev => ({
-        ...prev,
-        isLoading: false,
-        title: `Page: ${new URL(newUrl).hostname}`,
-        canGoBack: true
-      }));
-    }, 500);
+  const handleLoadComplete = useCallback(() => {
+    setNodeData(prev => ({
+      ...prev,
+      isLoading: false,
+      canGoBack: true
+    }));
+  }, []);
+
+  const handleLoadError = useCallback(() => {
+    setNodeData(prev => ({
+      ...prev,
+      isLoading: false
+    }));
   }, []);
 
   const handleNavigateBack = useCallback(() => {
     if (nodeData.canGoBack) {
+      // In a real implementation, you'd need to track history
       setNodeData(prev => ({
         ...prev,
         canGoBack: false,
@@ -61,7 +82,6 @@ export const useWebBrowser = (initialData, nodeId) => {
   }, [nodeData.canGoForward]);
 
   const handleToggleNotes = useCallback(() => {
-    // Implement notes functionality
     console.log('Toggle notes for node:', nodeId);
   }, [nodeId]);
 
@@ -71,6 +91,8 @@ export const useWebBrowser = (initialData, nodeId) => {
     handleUrlChange,
     handleNavigateBack,
     handleNavigateForward,
-    handleToggleNotes
+    handleToggleNotes,
+    handleLoadComplete,
+    handleLoadError
   };
 };

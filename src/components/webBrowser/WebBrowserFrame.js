@@ -1,35 +1,63 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
-const WebBrowserFrame = ({ url, isLoading, title }) => {
+const WebBrowserFrame = ({ url, isLoading, title, onLoadComplete, onLoadError }) => {
+  const [iframeLoading, setIframeLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const handleIframeLoad = () => {
+    setIframeLoading(false);
+    setHasError(false);
+    onLoadComplete?.();
+  };
+
+  const handleIframeError = () => {
+    setIframeLoading(false);
+    setHasError(true);
+    setErrorMessage('Failed to load page. Site may not allow embedding.');
+    onLoadError?.();
+  };
+
+  useEffect(() => {
+    setIframeLoading(true);
+    setHasError(false);
+  }, [url]);
+
   return (
     <div className="relative h-48 bg-gray-100 border-y border-gray-200">
-      {isLoading ? (
-        <div className="flex items-center justify-center h-full">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+      {(isLoading || iframeLoading) && (
+        <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-80 z-10">
+          <div className="flex items-center space-x-2">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
+            <span className="text-sm text-gray-600">Loading...</span>
+          </div>
+        </div>
+      )}
+
+      {hasError ? (
+        <div className="h-full flex items-center justify-center p-4">
+          <div className="text-center">
+            <div className="text-4xl mb-2">🚫</div>
+            <h3 className="text-sm font-medium text-gray-900 mb-1">Can't load page</h3>
+            <p className="text-xs text-gray-500">{errorMessage}</p>
+            <button
+              onClick={() => window.open(url, '_blank')}
+              className="mt-2 text-xs text-blue-600 hover:text-blue-800 underline"
+            >
+              Open in new tab
+            </button>
+          </div>
         </div>
       ) : (
-        <div className="h-full p-4 overflow-hidden">
-          {/* Mock browser content */}
-          <div className="space-y-2">
-            <div className="flex items-center space-x-2">
-              <div className="w-4 h-4 bg-gray-300 rounded"></div>
-              <div className="h-3 bg-gray-300 rounded w-32"></div>
-            </div>
-            <div className="h-2 bg-gray-200 rounded w-full"></div>
-            <div className="h-2 bg-gray-200 rounded w-3/4"></div>
-            <div className="h-2 bg-gray-200 rounded w-1/2"></div>
-            <div className="space-y-1 mt-4">
-              <div className="h-2 bg-gray-300 rounded w-full"></div>
-              <div className="h-2 bg-gray-300 rounded w-5/6"></div>
-              <div className="h-2 bg-gray-300 rounded w-4/6"></div>
-            </div>
-          </div>
-          
-          {/* URL display */}
-          <div className="absolute top-2 right-2 text-xs text-gray-400 bg-white px-2 py-1 rounded border">
-            {new URL(url).hostname}
-          </div>
-        </div>
+        <iframe
+          src={url}
+          title={title}
+          className="w-full h-full border-0"
+          onLoad={handleIframeLoad}
+          onError={handleIframeError}
+          sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+          loading="lazy"
+        />
       )}
     </div>
   );

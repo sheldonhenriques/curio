@@ -10,12 +10,13 @@ const WebBrowserNode = ({ data, id }) => {
     handleUrlChange,
     handleNavigateBack,
     handleNavigateForward,
-    handleToggleNotes
+    handleToggleNotes,
+    handleLoadComplete,
+    handleLoadError
   } = useWebBrowser(data, id);
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg shadow-lg min-w-[320px] max-w-[400px]">
-      {/* Node Handles */}
       <Handle
         type="target"
         position={Position.Top}
@@ -27,7 +28,6 @@ const WebBrowserNode = ({ data, id }) => {
         className="w-2 h-2 bg-blue-500"
       />
       
-      {/* Browser Header */}
       <div className="flex items-center justify-between p-3 border-b border-gray-200">
         <div className="flex items-center space-x-2">
           <span className="text-lg">{nodeData.favicon}</span>
@@ -51,7 +51,6 @@ const WebBrowserNode = ({ data, id }) => {
         </div>
       </div>
 
-      {/* Browser Controls */}
       <WebBrowserControls
         nodeData={nodeData}
         onRefresh={handleRefresh}
@@ -60,14 +59,14 @@ const WebBrowserNode = ({ data, id }) => {
         onNavigateForward={handleNavigateForward}
       />
 
-      {/* Browser Frame */}
       <WebBrowserFrame
         url={nodeData.url}
         isLoading={nodeData.isLoading}
         title={nodeData.title}
+        onLoadComplete={handleLoadComplete}
+        onLoadError={handleLoadError}
       />
 
-      {/* Footer */}
       <div className="flex items-center justify-between p-2 border-t border-gray-100 bg-gray-50 rounded-b-lg">
         <p className="text-xs text-gray-500">
           Last visited: {nodeData.lastVisited}
@@ -81,7 +80,10 @@ const WebBrowserNode = ({ data, id }) => {
             🔄
           </button>
           <button
-            onClick={handleUrlChange}
+            onClick={() => {
+              const newUrl = prompt('Enter URL:', nodeData.url);
+              if (newUrl) handleUrlChange(newUrl);
+            }}
             className="p-1 text-gray-400 hover:text-gray-600 text-xs"
             title="Change URL"
           >
