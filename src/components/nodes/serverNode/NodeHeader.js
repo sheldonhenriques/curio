@@ -36,7 +36,7 @@ const NodeHeader = ({ node, onDelete }) => {
           size="sm"
           variant="ghost"
           onClick={handleDeleteClick}
-          className="h-5 w-5 p-0"
+          className="h-5 w-5 p-0 nodrag"
           aria-label="Delete node"
         >
           <Trash2 className="w-3 h-3" />

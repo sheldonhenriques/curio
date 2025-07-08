@@ -24,7 +24,7 @@ const NodeControls = ({ node, onToggleDesktopMode, onUpdateViewport }) => {
           size="sm"
           variant={node.desktopMode ? "default" : "outline"}
           onClick={handleDesktopToggle}
-          className="h-6 px-2 text-xs"
+          className="h-6 px-2 text-xs nodrag"
         >
           <Maximize2 className="w-3 h-3 mr-1" />
           Desktop
@@ -43,7 +43,7 @@ const NodeControls = ({ node, onToggleDesktopMode, onUpdateViewport }) => {
               size="sm"
               variant={node.viewport.width === preset.width ? "default" : "outline"}
               onClick={handleViewportChange(preset)}
-              className="h-6 px-2 text-xs"
+              className="h-6 px-2 text-xs nodrag"
             >
               {preset.name}
             </Button>

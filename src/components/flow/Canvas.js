@@ -38,8 +38,13 @@ export default function Canvas() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
-        fitView
         nodeTypes={nodeTypes}
+        nodesDraggable={true}
+        nodesConnectable={true}
+        elementsSelectable={true}
+        selectNodesOnDrag={false}
+        fitView
+        attributionPosition="bottom-left"
       >
         <Controls />
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} />

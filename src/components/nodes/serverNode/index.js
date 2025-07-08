@@ -48,26 +48,25 @@ const ServerNode = ({ data, selected, id }) => {
   }, [setSuccessState, setSuccessStateInFlow]);
 
   return (
-    <div className="bg-white border-2 rounded-lg shadow-lg flex flex-col min-h-0 nodrag">
+    <div className="bg-white border-2 rounded-lg shadow-lg flex flex-col min-h-0">
       {/* React Flow connection handles */}
       <Handle type="target" position={Position.Top} />
       <Handle type="source" position={Position.Bottom} />
       <Handle type="target" position={Position.Left} />
       <Handle type="source" position={Position.Right} />
       
-      {/* Node header with title and controls */}
-      <NodeHeader node={nodeData} onDelete={handleDelete} />
+    <NodeHeader node={nodeData} onDelete={handleDelete} />
       
       {/* Node controls - only shown when selected */}
       {selected && (
-        <NodeControls
-          node={nodeData}
-          onToggleDesktopMode={handleToggleDesktopMode}
-          onUpdateViewport={handleUpdateViewport}
-        />
+          <NodeControls
+            node={nodeData}
+            onToggleDesktopMode={handleToggleDesktopMode}
+            onUpdateViewport={handleUpdateViewport}
+          />
       )}
       
-      {/* Main preview area */}
+      {/* Main preview area - allow dragging on iframe container */}
       <NodePreview
         node={nodeData}
         onLoadError={handleLoadError}
