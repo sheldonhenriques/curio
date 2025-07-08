@@ -13,9 +13,11 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import ChecklistNode from '@/components/nodes/ChecklistNode';
 import { checklistNodes } from '@/data/nodes'
+import { ServerNode } from '@/components/nodes/webServerNode.js'
 
 const nodeTypes = {
   checklist: ChecklistNode,
+  webBrowser: ServerNode,
 };
 
 

@@ -42,18 +42,24 @@ export const checklistNodes = [
     }
   },
   {
-    id: 'web-1',
+    id: "node-1751992172530-fi5nrvpf9",
     type: 'webBrowser',
     position: { x: 100, y: 450 },
+    style: {
+      width: 500,
+      height: 400,
+    },
     data: {
-      url: 'https://docs.github.com/en',
-      title: 'Product Documentation',
-      lastVisited: '7/3/2025 10:20 AM',
-      favicon: '🌐',
-      isLoading: false,
-      canGoBack: false,
-      canGoForward: false,
-      isRefreshing: false
+      title: "localhost:3000",
+      url: "https://stunning-computing-machine-x9w9qwprqvp3vq99-3000.app.github.dev/",
+      desktopMode: true,
+      hasError: false,
+      isLoading: true,
+      isDragging: false,
+      viewport: {
+        width: 1200,
+        height: 800
+      }
     }
   }
 ];
