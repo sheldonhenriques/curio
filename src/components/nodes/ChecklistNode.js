@@ -1,11 +1,9 @@
 import { useState, useCallback, useMemo } from 'react';
-import { NodeResizer } from 'reactflow';
-
-import ChecklistHeader from '@/components/checklist/ChecklistHeader';
-import ChecklistBody from '@/components/checklist/ChecklistBody';
-import AddItemInput from '@/components/checklist/AddItemInput';
-import ConnectionHandles from '@/components/checklist/ConnectionHandles';
-
+import BaseNodeWrapper from '@/components/nodes/base/BaseNodeWrapper';
+import ChecklistHeader from '@/components/nodes/checklist/ChecklistHeader';
+import ChecklistBody from '@/components/nodes/checklist/ChecklistBody';
+import AddItemInput from '@/components/nodes/checklist/AddItemInput';
+import { useNodeManagement } from '@/hooks/useNodeManagement';
 import { CHECKLIST_CONFIG } from '@/constants/nodeConfig';
 import { nodeHelpers } from '@/utils/nodeHelpers';
 
@@ -17,11 +15,13 @@ const SIZE_OPTIONS = [
   CHECKLIST_CONFIG.SIZES.EXTRA_LARGE
 ];
 
-const ChecklistNode = ({ data, selected }) => {
+const ChecklistNode = ({ data, selected, id }) => {
   const [items, setItems] = useState(data?.items || []);
   const [newItem, setNewItem] = useState('');
   const [isAddingItem, setIsAddingItem] = useState(false);
-  const [sizeIndex, setSizeIndex] = useState(0); // default to EXTRA_SMALL
+  const [sizeIndex, setSizeIndex] = useState(data?.sizeIndex || 0);
+
+  const { updateNodeData, deleteNode } = useNodeManagement();
 
   const title = data?.title || 'Checklist';
   const maxItems = data?.maxItems || CHECKLIST_CONFIG.MAX_ITEMS;
@@ -29,12 +29,13 @@ const ChecklistNode = ({ data, selected }) => {
   const progress = useMemo(() => nodeHelpers.calculateProgress(items), [items]);
   const completedCount = useMemo(() => items.filter(item => item.completed).length, [items]);
   const canAddMore = items.length < maxItems;
-
   const currentSize = SIZE_OPTIONS[sizeIndex];
 
-  const toggleSize = () => {
-    setSizeIndex((prevIndex) => (prevIndex + 1) % SIZE_OPTIONS.length);
-  };
+  const toggleSize = useCallback(() => {
+    const newSizeIndex = (sizeIndex + 1) % SIZE_OPTIONS.length;
+    setSizeIndex(newSizeIndex);
+    updateNodeData(id, { sizeIndex: newSizeIndex });
+  }, [sizeIndex, id, updateNodeData]);
 
   const handleAddItem = useCallback(() => {
     if (!nodeHelpers.validateItemText(newItem) || !canAddMore) return;
@@ -48,78 +49,87 @@ const ChecklistNode = ({ data, selected }) => {
       createdAt: new Date().toISOString()
     };
 
-    setItems(prevItems => [...prevItems, newItemObj]);
+    const updatedItems = [...items, newItemObj];
+    setItems(updatedItems);
     setNewItem('');
+    updateNodeData(id, { items: updatedItems });
 
     setTimeout(() => setIsAddingItem(false), 100);
-  }, [newItem, canAddMore]);
+  }, [newItem, canAddMore, items, id, updateNodeData]);
 
-  const handleToggleItem = useCallback((id) => {
-    setItems(prevItems =>
-      prevItems.map(item =>
-        item.id === id ? { ...item, completed: !item.completed } : item
-      )
+  const handleToggleItem = useCallback((itemId) => {
+    const updatedItems = items.map(item =>
+      item.id === itemId ? { ...item, completed: !item.completed } : item
     );
-  }, []);
+    setItems(updatedItems);
+    updateNodeData(id, { items: updatedItems });
+  }, [items, id, updateNodeData]);
 
-  const handleDeleteItem = useCallback((id) => {
-    setItems(prevItems => prevItems.filter(item => item.id !== id));
-  }, []);
+  const handleDeleteItem = useCallback((itemId) => {
+    const updatedItems = items.filter(item => item.id !== itemId);
+    setItems(updatedItems);
+    updateNodeData(id, { items: updatedItems });
+  }, [items, id, updateNodeData]);
 
   const handleNewItemChange = useCallback((value) => {
     setNewItem(value);
   }, []);
 
   return (
-    <div
-      className="bg-white rounded-lg shadow-lg border border-gray-200 relative"
+    <BaseNodeWrapper
+      id={id}
+      data={data}
+      selected={selected}
       style={{
         width: currentSize.width,
         minWidth: CHECKLIST_CONFIG.MIN_WIDTH,
       }}
+      resizable={true}
+      resizeConfig={{
+        color: CHECKLIST_CONFIG.RESIZE_COLOR,
+        minWidth: CHECKLIST_CONFIG.MIN_WIDTH,
+      }}
+      onDelete={deleteNode}
+      onUpdateData={updateNodeData}
     >
-      <NodeResizer
-        color={CHECKLIST_CONFIG.RESIZE_COLOR}
-        isVisible={selected}
-        minWidth={CHECKLIST_CONFIG.MIN_WIDTH}
-      />
+      {({ handleDelete, handleUpdateData }) => (
+        <>
+          <ChecklistHeader
+            title={title}
+            completedCount={completedCount}
+            totalCount={items.length}
+            progress={progress}
+            onResizeClick={toggleSize}
+            isMaxSize={sizeIndex === SIZE_OPTIONS.length - 1}
+          />
 
-      <ChecklistHeader
-        title={title}
-        completedCount={completedCount}
-        totalCount={items.length}
-        progress={progress}
-        onResizeClick={toggleSize}
-        isMaxSize={sizeIndex === SIZE_OPTIONS.length - 1}
-      />
+          <ChecklistBody
+            items={items}
+            onToggleItem={handleToggleItem}
+            onDeleteItem={handleDeleteItem}
+          />
 
-      <ChecklistBody
-        items={items}
-        onToggleItem={handleToggleItem}
-        onDeleteItem={handleDeleteItem}
-      />
-
-      <footer className="p-4 border-t border-gray-200">
-        <AddItemInput
-          value={newItem}
-          onChange={handleNewItemChange}
-          onAdd={handleAddItem}
-          disabled={isAddingItem || !canAddMore}
-          placeholder={
-            !canAddMore
-              ? `Maximum ${maxItems} items reached`
-              : "Add a new item and press Enter"
-          }
-        />
-        {!canAddMore && (
-          <p className="text-xs text-gray-500 mt-1">
-            Maximum number of items reached
-          </p>
-        )}
-      </footer>
-
-      <ConnectionHandles />
-    </div>
+          <footer className="p-4 border-t border-gray-200">
+            <AddItemInput
+              value={newItem}
+              onChange={handleNewItemChange}
+              onAdd={handleAddItem}
+              disabled={isAddingItem || !canAddMore}
+              placeholder={
+                !canAddMore
+                  ? `Maximum ${maxItems} items reached`
+                  : "Add a new item and press Enter"
+              }
+            />
+            {!canAddMore && (
+              <p className="text-xs text-gray-500 mt-1">
+                Maximum number of items reached
+              </p>
+            )}
+          </footer>
+        </>
+      )}
+    </BaseNodeWrapper>
   );
 };
 

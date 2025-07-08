@@ -1,4 +1,4 @@
-import ChecklistItem from '@/components/checklist/ChecklistItem';
+import ChecklistItem from '@/components/nodes/checklist/ChecklistItem';
 
 const ChecklistBody = ({ items, onToggleItem, onDeleteItem, maxHeight = 400 }) => (
   <main 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Expand, Minimize } from 'lucide-react';
-import { ProgressBar } from '@/components/checklist/ProgressBar';
+import { ProgressBar } from '@/components/nodes/checklist/ProgressBar';
 
 const ChecklistHeader = ({
   title,

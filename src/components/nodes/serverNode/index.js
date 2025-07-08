@@ -1,78 +1,64 @@
 import React, { useCallback } from 'react';
-import { Handle, Position } from 'reactflow';
+import BaseNodeWrapper from '@/components/nodes/base/BaseNodeWrapper';
 import NodeHeader from '@/components/nodes/serverNode/NodeHeader';
 import NodeControls from '@/components/nodes/serverNode/NodeControls';
 import NodePreview from '@/components/nodes/serverNode/NodePreview';
 import { useNodeData } from '@/hooks/useNodeData';
-import { useNodeActions } from '@/hooks/useNodeActions';
+import { useNodeManagement } from '@/hooks/useNodeManagement';
 
 const ServerNode = ({ data, selected, id }) => {
-  const {
-    nodeData,
-    toggleDesktopMode,
-    updateViewport,
-    setErrorState,
-    setSuccessState
-  } = useNodeData(data);
+  const { nodeData } = useNodeData(data);
+  const { updateNodeData, deleteNode, toggleNodeFeature, setNodeState } = useNodeManagement();
 
-  const {
-    deleteNode,
-    toggleDesktopModeInFlow,
-    updateViewportInFlow,
-    setErrorStateInFlow,
-    setSuccessStateInFlow
-  } = useNodeActions();
+  const handleToggleDesktopMode = useCallback(() => {
+    toggleNodeFeature(id, 'desktopMode', !nodeData.desktopMode);
+  }, [id, nodeData.desktopMode, toggleNodeFeature]);
 
-  const handleDelete = useCallback((nodeId) => {
-    deleteNode(nodeId);
-  }, [deleteNode]);
+  const handleUpdateViewport = useCallback((viewport) => {
+    updateNodeData(id, { viewport });
+  }, [id, updateNodeData]);
 
-  const handleToggleDesktopMode = useCallback((nodeId) => {
-    toggleDesktopMode();
-    toggleDesktopModeInFlow(nodeId, nodeData.desktopMode);
-  }, [toggleDesktopMode, toggleDesktopModeInFlow, nodeData.desktopMode]);
+  const handleLoadError = useCallback(() => {
+    setNodeState(id, 'error');
+  }, [id, setNodeState]);
 
-  const handleUpdateViewport = useCallback((nodeId, viewport) => {
-    updateViewport(viewport);
-    updateViewportInFlow(nodeId, viewport);
-  }, [updateViewport, updateViewportInFlow]);
-
-  const handleLoadError = useCallback((nodeId) => {
-    setErrorState();
-    setErrorStateInFlow(nodeId);
-  }, [setErrorState, setErrorStateInFlow]);
-
-  const handleLoadSuccess = useCallback((nodeId) => {
-    setSuccessState();
-    setSuccessStateInFlow(nodeId);
-  }, [setSuccessState, setSuccessStateInFlow]);
+  const handleLoadSuccess = useCallback(() => {
+    setNodeState(id, 'success');
+  }, [id, setNodeState]);
 
   return (
-    <div className="bg-white border-2 rounded-lg shadow-lg flex flex-col min-h-0">
-      {/* React Flow connection handles */}
-      <Handle type="target" position={Position.Top} />
-      <Handle type="source" position={Position.Bottom} />
-      <Handle type="target" position={Position.Left} />
-      <Handle type="source" position={Position.Right} />
-      
-    <NodeHeader node={nodeData} onDelete={handleDelete} />
-      
-      {/* Node controls - only shown when selected */}
-      {selected && (
-          <NodeControls
+    <BaseNodeWrapper
+      id={id}
+      data={data}
+      selected={selected}
+      className="border-2 flex flex-col min-h-0"
+      onDelete={deleteNode}
+      onToggleFeature={toggleNodeFeature}
+      onUpdateData={updateNodeData}
+      onStateChange={setNodeState}
+    >
+      {({ handleDelete, handleToggleFeature, handleUpdateData, handleStateChange }) => (
+        <>
+          <NodeHeader node={nodeData} onDelete={handleDelete} />
+
+          {/* Node controls - only shown when selected */}
+          {selected && (
+            <NodeControls
+              node={nodeData}
+              onToggleDesktopMode={handleToggleDesktopMode}
+              onUpdateViewport={handleUpdateViewport}
+            />
+          )}
+
+          {/* Main preview area */}
+          <NodePreview
             node={nodeData}
-            onToggleDesktopMode={handleToggleDesktopMode}
-            onUpdateViewport={handleUpdateViewport}
+            onLoadError={handleLoadError}
+            onLoadSuccess={handleLoadSuccess}
           />
+        </>
       )}
-      
-      {/* Main preview area - allow dragging on iframe container */}
-      <NodePreview
-        node={nodeData}
-        onLoadError={handleLoadError}
-        onLoadSuccess={handleLoadSuccess}
-      />
-    </div>
+    </BaseNodeWrapper>
   );
 };
 
