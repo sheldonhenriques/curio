@@ -2,17 +2,25 @@
 
 import { useState, useRef, useCallback } from "react"
 import { Handle, Position, useReactFlow } from "reactflow"
-import { DEVICE_SIZES } from '@/constants/node'
+import { DEVICE_SIZES } from "@/constants/node"
 import NodeControls from "@/components/nodes/basenode/nodeControls"
 
-export default function BaseNode({ id, data, selected }) {
+export default function BaseNode({
+    id,
+    data,
+    selected,
+    children,
+    nodeType = "baseNode",
+    sizeOptions = DEVICE_SIZES,
+    onCustomHandlers = {},
+}) {
     const [isHovered, setIsHovered] = useState(false)
     const [showSizeDropdown, setShowSizeDropdown] = useState(false)
     const hoverTimeoutRef = useRef(null)
     const nodeRef = useRef(null)
     const { setNodes, getNode } = useReactFlow()
 
-    const currentDeviceType = data.deviceType || "desktop"
+    const currentDeviceType = data.deviceType || (nodeType === "checklistNode" ? "normal" : "desktop")
 
     const handleDelete = useCallback(() => {
         setNodes((nodes) => nodes.filter((node) => node.id !== id))
@@ -22,8 +30,7 @@ export default function BaseNode({ id, data, selected }) {
         const node = getNode(id)
         if (!node) return
 
-        const size = DEVICE_SIZES[node.data.deviceType || "desktop"] || { width: 300 }
-
+        const size = sizeOptions[node.data.deviceType || currentDeviceType] || { width: 300 }
         const newNode = {
             ...node,
             id: `${id}-copy-${Date.now()}`,
@@ -38,11 +45,11 @@ export default function BaseNode({ id, data, selected }) {
         }
 
         setNodes((nodes) => [...nodes, newNode])
-    }, [id, getNode, setNodes])
+    }, [id, getNode, setNodes, sizeOptions, currentDeviceType])
 
     const handleSizeChange = useCallback(
         (deviceType) => {
-            const size = DEVICE_SIZES[deviceType]
+            const size = sizeOptions[deviceType]
             setNodes((nodes) =>
                 nodes.map((node) =>
                     node.id === id
@@ -55,8 +62,12 @@ export default function BaseNode({ id, data, selected }) {
                 ),
             )
             setShowSizeDropdown(false)
+
+            if (onCustomHandlers.onSizeChange) {
+                onCustomHandlers.onSizeChange(deviceType)
+            }
         },
-        [id, setNodes],
+        [id, setNodes, sizeOptions, onCustomHandlers],
     )
 
     return (
@@ -77,10 +88,13 @@ export default function BaseNode({ id, data, selected }) {
                 }, 200)
             }}
         >
+            <div className="absolute top-2 right-2 opacity-50">{sizeOptions[currentDeviceType]?.icon}</div>
 
-            <div className="p-4 h-full flex items-center justify-center pointer-events-none">
-                <span className="text-sm font-medium text-gray-700 select-none">{data.label}</span>
-            </div>
+            {children || (
+                <div className="p-4 h-full flex items-center justify-center pointer-events-none">
+                    <span className="text-sm font-medium text-gray-700 select-none">{data.label}</span>
+                </div>
+            )}
 
             {isHovered && (
                 <NodeControls
@@ -92,9 +106,11 @@ export default function BaseNode({ id, data, selected }) {
                     handleSizeChange={handleSizeChange}
                     setIsHovered={setIsHovered}
                     hoverTimeoutRef={hoverTimeoutRef}
+                    nodeType={nodeType}
                 />
             )}
 
+            {/* Connection Handles */}
             <Handle
                 type="target"
                 position={Position.Top}

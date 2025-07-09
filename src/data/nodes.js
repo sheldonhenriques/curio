@@ -13,4 +13,19 @@ export const initialNodes = [
     data: { label: "Mobile View", deviceType: "mobile" },
     style: { width: 375, height: 667 },
   },
+  {
+    id: "3",
+    type: "checklistNode",
+    position: { x: 100, y: 950 },
+    data: {
+      label: "Project Tasks",
+      deviceType: "normal",
+      checklistItems: [
+        { id: 1, text: "Design wireframes", completed: true },
+        { id: 2, text: "Implement components", completed: false },
+        { id: 3, text: "Write tests", completed: false },
+      ],
+    },
+    style: { width: 320, height: 300 },
+  }
 ]

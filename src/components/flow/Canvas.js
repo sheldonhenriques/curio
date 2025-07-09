@@ -14,9 +14,11 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import { initialNodes } from '@/data/nodes.js'
 import BaseNode from "@/components/nodes/basenode"
+import ChecklistNode from "@/components/nodes/checklist"
 
 const nodeTypes = {
   baseNode: BaseNode,
+  checklistNode: ChecklistNode,
 }
 
 export default function Canvas() {
