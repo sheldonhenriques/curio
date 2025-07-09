@@ -15,10 +15,12 @@ import 'reactflow/dist/style.css';
 import { initialNodes } from '@/data/nodes.js'
 import BaseNode from "@/components/nodes/basenode"
 import ChecklistNode from "@/components/nodes/checklist"
+import WebserverNode from "@/components/nodes/webserver"
 
 const nodeTypes = {
   baseNode: BaseNode,
   checklistNode: ChecklistNode,
+  webserverNode: WebserverNode,
 }
 
 export default function Canvas() {

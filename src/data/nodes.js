@@ -7,13 +7,6 @@ export const initialNodes = [
     style: { width: 1200, height: 800 },
   },
   {
-    id: "2",
-    type: "baseNode",
-    position: { x: 450, y: 200 },
-    data: { label: "Mobile View", deviceType: "mobile" },
-    style: { width: 375, height: 667 },
-  },
-  {
     id: "3",
     type: "checklistNode",
     position: { x: 100, y: 950 },
@@ -27,5 +20,17 @@ export const initialNodes = [
       ],
     },
     style: { width: 320, height: 300 },
+  },
+  {
+    id: "4",
+    type: "webserverNode",
+    position: { x: 1350, y: 950 },
+    data: {
+      label: "/dashboard",
+      deviceType: "desktop",
+      url: "https://stunning-computing-machine-x9w9qwprqvp3vq99-3000.app.github.dev/dashboard",
+      hasError: false,
+    },
+    style: { width: 1200, height: 800 },
   }
 ]
