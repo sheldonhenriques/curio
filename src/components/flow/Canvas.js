@@ -8,14 +8,19 @@ import ReactFlow, {
   Controls,
   Background,
   BackgroundVariant,
+  MiniMap,
 } from 'reactflow';
 
 import 'reactflow/dist/style.css';
+import { initialNodes } from '@/data/nodes.js'
+import BaseNode from "@/components/nodes/basenode"
+
 const nodeTypes = {
-};
+  baseNode: BaseNode,
+}
 
 export default function Canvas() {
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
   const onConnect = useCallback(
@@ -34,9 +39,14 @@ export default function Canvas() {
         fitView
         nodeTypes={nodeTypes}
         attributionPosition="bottom-left"
+        selectNodesOnDrag={false}
+        panOnDrag={[1, 2]}
+        selectionOnDrag={true}
+        minZoom={0.1}
       >
         <Controls />
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
+        <MiniMap />
       </ReactFlow>
     </div>
   );
