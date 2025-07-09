@@ -39,39 +39,12 @@ export const nodeHelpers = {
   })
 };
 
-export const calculateDesktopScale = (nodeWidth, nodeHeight) => {
-  const availableWidth = nodeWidth - 20; // Account for padding
-  const availableHeight = nodeHeight - 100; // Account for header/controls
-  
-  const scaleX = availableWidth / WEB_BROWSER_CONFIG.DEFAULT_DESKTOP_SIZE.width;
-  const scaleY = availableHeight / WEB_BROWSER_CONFIG.DEFAULT_DESKTOP_SIZE.height;
-  
-  return Math.min(scaleX, scaleY, 1);
-};
-
-export const getIframeStyle = (desktopMode) => {
-  if (!desktopMode) return {};
-  
+export const calculateNodeDimensions = (preset, scale = 0.3) => {
+  const headerHeight = 40;
   return {
-    transform: 'scale(0.5)',
-    transformOrigin: '0 0',
-    width: '200%',
-    height: '200%'
+    width: (preset.width * scale) + 16,
+    height: (preset.height * scale) + headerHeight + 8
   };
-};
-
-export const calculateScale = (nodeWidth, nodeHeight, viewport) => {
-  const availableWidth = nodeWidth - 20; // Account for padding
-  const availableHeight = nodeHeight - 100; // Account for header/controls
-  
-  const scaleX = availableWidth / viewport.width;
-  const scaleY = availableHeight / viewport.height;
-  
-  return Math.min(scaleX, scaleY, 1);
-};
-
-export const getViewportDisplayText = (node) => {
-  return `${node.viewport?.width || 1200}×${node.viewport?.height || 800}`;
 };
 
 export const getContainerStyle = (viewport, scale = 0.3) => {

@@ -1,7 +1,12 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 
-export const useNodeData = (initialData) => {
-  const [nodeData, setNodeData] = useState(initialData);
+export const useNodeData = (externalData) => {
+  const [nodeData, setNodeData] = useState(externalData);
+
+  // sync with prop if it changes
+  useEffect(() => {
+    setNodeData(externalData);
+  }, [externalData]);
 
   const updateNodeData = useCallback((updates) => {
     setNodeData(prev => ({ ...prev, ...updates }));

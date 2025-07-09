@@ -1,4 +1,5 @@
-import { useState, useCallback, useMemo } from 'react';
+// webNode.jsx - Updated with better control visibility and flexible sizing
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import BaseNodeWrapper from '@/components/nodes/base/BaseNodeWrapper';
 import { useNodeManagement } from '@/hooks/useNodeManagement';
 import { WEB_BROWSER_CONFIG } from '@/constants/nodeConfig';
@@ -9,25 +10,86 @@ import { useNodeData } from '@/hooks/useNodeData';
 
 const VIEWPORT_PRESETS = WEB_BROWSER_CONFIG.VIEWPORT_PRESETS;
 
-const ChecklistNode = ({ data, selected, id }) => {
-    const initialSizeIndex = useMemo(() => {
-        const sizeName = data?.size?.toLowerCase?.() || 'desktop';
-        const foundIndex = VIEWPORT_PRESETS.findIndex(p => p.name.toLowerCase() === sizeName);
-        return foundIndex !== -1 ? foundIndex : 0;
-    }, [data]);
-
-    const [sizeIndex, setSizeIndex] = useState(initialSizeIndex);
+const webNode = ({ data, selected, id }) => {
     const { updateNodeData, deleteNode, setNodeState } = useNodeManagement();
-
-    const currentSize = VIEWPORT_PRESETS[sizeIndex];
     const { nodeData } = useNodeData(data);
+    
+    // State for controls visibility with delay
+    const [showControls, setShowControls] = useState(false);
+    const [controlsTimer, setControlsTimer] = useState(null);
+    
+    // Calculate dimensions consistently
+    const currentSizeName = nodeData?.size?.toLowerCase?.() || 'desktop';
+    const sizeIndex = VIEWPORT_PRESETS.findIndex(p => p.name.toLowerCase() === currentSizeName);
+    const currentSize = VIEWPORT_PRESETS[sizeIndex !== -1 ? sizeIndex : 0];
+    
+    // Dynamic sizing based on scale
+    const scale = 0.3;
+    const baseHeaderHeight = 24; // Reduced base height
+    const compactHeaderHeight = 16; // For very small nodes
+    
+    // Determine if we should use compact mode
+    const scaledWidth = currentSize.width * scale;
+    const scaledHeight = currentSize.height * scale;
+    const isCompact = scaledWidth < 200 || scaledHeight < 150;
+    
+    const headerHeight = isCompact ? compactHeaderHeight : baseHeaderHeight;
+    const nodeWidth = scaledWidth + (isCompact ? 8 : 12); // Reduced padding
+    const nodeHeight = scaledHeight + headerHeight + (isCompact ? 4 : 6); // Minimal extra height
+
+    // Handle selection changes for controls
+    useEffect(() => {
+        if (selected) {
+            // Clear any existing timer
+            if (controlsTimer) {
+                clearTimeout(controlsTimer);
+            }
+            
+            // Show controls immediately when selected
+            setShowControls(true);
+            
+            // Set timer to hide controls after 3 seconds of no interaction
+            const timer = setTimeout(() => {
+                setShowControls(false);
+            }, 3000);
+            
+            setControlsTimer(timer);
+        } else {
+            // Hide controls immediately when deselected
+            setShowControls(false);
+            if (controlsTimer) {
+                clearTimeout(controlsTimer);
+                setControlsTimer(null);
+            }
+        }
+        
+        // Cleanup timer on unmount
+        return () => {
+            if (controlsTimer) {
+                clearTimeout(controlsTimer);
+            }
+        };
+    }, [selected]);
+    
+    // Reset controls timer on mouse activity
+    const handleMouseActivity = useCallback(() => {
+        if (selected && controlsTimer) {
+            clearTimeout(controlsTimer);
+            setShowControls(true);
+            
+            const timer = setTimeout(() => {
+                setShowControls(false);
+            }, 3000);
+            
+            setControlsTimer(timer);
+        }
+    }, [selected, controlsTimer]);
 
     const setViewportMode = useCallback((nodeId, mode) => {
-        const foundIndex = VIEWPORT_PRESETS.findIndex(p => p.name.toLowerCase() === mode);
-        setSizeIndex(foundIndex);
         updateNodeData(nodeId, { size: mode });
-    }, [updateNodeData]);
-
+        // Keep controls visible briefly after interaction
+        handleMouseActivity();
+    }, [updateNodeData, handleMouseActivity]);
 
     const handleUpdateViewport = useCallback((nodeId, viewport) => {
         updateNodeData(nodeId, { viewport });
@@ -44,41 +106,61 @@ const ChecklistNode = ({ data, selected, id }) => {
     return (
         <BaseNodeWrapper
             id={id}
-            data={data}
+            data={nodeData}
             selected={selected}
             style={{
-                width: currentSize.width,
-                minWidth: WEB_BROWSER_CONFIG.MIN_WIDTH,
+                width: nodeWidth,
+                height: nodeHeight,
+                minWidth: Math.max(WEB_BROWSER_CONFIG.MIN_WIDTH || 100, nodeWidth),
+                minHeight: nodeHeight,
             }}
             resizable={true}
             resizeConfig={{
                 color: WEB_BROWSER_CONFIG.RESIZE_COLOR,
-                minWidth: WEB_BROWSER_CONFIG.MIN_WIDTH,
+                minWidth: Math.max(WEB_BROWSER_CONFIG.MIN_WIDTH || 100, nodeWidth),
+                minHeight: nodeHeight,
             }}
             onDelete={deleteNode}
             onUpdateData={updateNodeData}
         >
             {({ handleDelete, handleUpdateData }) => (
-                <>
-                    <NodeHeader node={nodeData} onDelete={handleDelete} />
-                    {/* Node controls - only shown when selected */}
-                    {selected && (
-                        <NodeControls
-                            node={nodeData}
-                            onSetViewportMode={setViewportMode}
-                            onUpdateViewport={handleUpdateViewport}
-                        />
-                    )}
-                    {/* Main preview area */}
-                    <NodePreview
+                <div className="relative">
+                    {/* Floating controls - positioned above the node */}
+                    <NodeControls
                         node={nodeData}
-                        onLoadError={handleLoadError}
-                        onLoadSuccess={handleLoadSuccess}
+                        nodeId={id}
+                        onSetViewportMode={setViewportMode}
+                        onUpdateViewport={handleUpdateViewport}
+                        isVisible={selected && showControls}
                     />
-                </>
+                    
+                    {/* Main node content */}
+                    <div 
+                        className="relative h-full flex flex-col"
+                        onMouseEnter={handleMouseActivity}
+                        onMouseMove={handleMouseActivity}
+                    >
+                        <NodeHeader 
+                            node={nodeData} 
+                            onDelete={handleDelete} 
+                            isCompact={isCompact}
+                        />
+                        
+                        {/* Main preview area - flex-1 takes remaining space */}
+                        <div className="flex-1 min-h-0">
+                            <NodePreview
+                                node={nodeData}
+                                nodeId={id}
+                                onLoadError={handleLoadError}
+                                onLoadSuccess={handleLoadSuccess}
+                                isCompact={isCompact}
+                            />
+                        </div>
+                    </div>
+                </div>
             )}
         </BaseNodeWrapper>
     );
 };
 
-export default ChecklistNode;
+export default webNode;

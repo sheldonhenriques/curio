@@ -1,25 +1,29 @@
+// NodePreview.jsx - Updated with compact mode support
 import React, { useMemo, useCallback } from 'react';
 import { AlertCircle } from 'lucide-react';
 import { WEB_BROWSER_CONFIG } from '@/constants/nodeConfig';
 
-const ErrorState = () => (
+const ErrorState = ({ isCompact = false }) => (
   <div className="flex-1 flex items-center justify-center bg-red-50">
     <div className="text-center text-red-600">
-      <AlertCircle className="w-8 h-8 mx-auto mb-2" />
-      <p className="text-xs">Failed to load</p>
+      <AlertCircle className={`${isCompact ? 'w-4 h-4' : 'w-6 h-6'} mx-auto mb-1`} />
+      <p className={`${isCompact ? 'text-[8px]' : 'text-[10px]'}`}>Failed to load</p>
     </div>
   </div>
 );
 
-const NodePreview = ({ node, onLoadError, onLoadSuccess }) => {
+const NodePreview = ({ node, nodeId, onLoadError, onLoadSuccess, isCompact = false }) => {
   const VIEWPORT_PRESETS = WEB_BROWSER_CONFIG.VIEWPORT_PRESETS;
+  
+  const actualNodeId = node.id || nodeId;
+  
   const handleLoad = useCallback(() => {
-    onLoadSuccess?.(node.id);
-  }, [node.id, onLoadSuccess]);
+    onLoadSuccess?.(actualNodeId);
+  }, [actualNodeId, onLoadSuccess]);
 
   const handleError = useCallback(() => {
-    onLoadError?.(node.id);
-  }, [node.id, onLoadError]);
+    onLoadError?.(actualNodeId);
+  }, [actualNodeId, onLoadError]);
 
   const { containerStyle, wrapperStyle } = useMemo(() => {
     const scale = 0.3;
@@ -29,31 +33,31 @@ const NodePreview = ({ node, onLoadError, onLoadSuccess }) => {
     const viewportHeight = match?.height || 800;
     
     return {
-      // This is the actual iframe container
       containerStyle: {
         width: `${viewportWidth}px`,
         height: `${viewportHeight}px`,
         transform: `scale(${scale})`,
         transformOrigin: '0 0',
         border: '1px solid #e5e7eb',
-        borderRadius: '4px',
+        borderRadius: isCompact ? '2px' : '4px',
         overflow: 'hidden'
       },
-      // This wrapper contains the scaled iframe and defines the visible area
       wrapperStyle: {
         width: `${viewportWidth * scale}px`,
         height: `${viewportHeight * scale}px`,
         overflow: 'hidden'
       }
     };
-  }, [node.size]);
+  }, [node.size, isCompact]);
 
   if (node.hasError) {
-    return <ErrorState />;
+    return <ErrorState isCompact={isCompact} />;
   }
 
+  const padding = isCompact ? 'p-0.5' : 'p-1';
+
   return (
-    <div className="flex-1 overflow-hidden p-2">
+    <div className={`h-full overflow-hidden ${padding}`}>
       <div className="w-full h-full flex justify-start">
         <div style={wrapperStyle}>
           <div style={containerStyle}>
@@ -61,7 +65,7 @@ const NodePreview = ({ node, onLoadError, onLoadSuccess }) => {
               src={node.url}
               className="w-full h-full border-0"
               sandbox={WEB_BROWSER_CONFIG.IFRAME_SANDBOX_PERMISSIONS}
-              title={`${node.screen || 'desktop'} preview of ${node.title}`}
+              title={`${node.size || 'desktop'} preview of ${node.title}`}
               onLoad={handleLoad}
               onError={handleError}
             />
