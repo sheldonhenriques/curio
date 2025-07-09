@@ -1,59 +1,36 @@
-export const checklistNodes = [
+export const initialNodes = [
   {
-    id: 'checklist-1',
-    type: 'checklist',
+    id: "1",
+    type: "baseNode",
     position: { x: 100, y: 100 },
-    data: {
-      title: 'Strategic Goals',
-      items: [
-        { id: 1, text: 'Increase market share by 15%', completed: false },
-        { id: 2, text: 'Improve user retention by 20%', completed: false },
-        { id: 3, text: 'Launch 3 new product initiatives', completed: true },
-        { id: 4, text: 'Expand to enterprise market', completed: false }
-      ]
-    }
+    data: { label: "Desktop View", deviceType: "desktop" },
+    style: { width: 1200, height: 800 },
   },
   {
-    id: 'checklist-2',
-    type: 'checklist',
-    position: { x: 450, y: 100 },
+    id: "3",
+    type: "checklistNode",
+    position: { x: 100, y: 950 },
     data: {
-      title: 'Strategic Goals',
-      items: [
-        { id: 1, text: 'Increase market share by 15%', completed: false },
-        { id: 2, text: 'Improve user retention by 20%', completed: false },
-        { id: 3, text: 'Launch 3 new product initiatives', completed: true },
-        { id: 4, text: 'Expand to enterprise market', completed: false }
-      ]
-    }
+      label: "Project Tasks",
+      deviceType: "normal",
+      checklistItems: [
+        { id: 1, text: "Design wireframes", completed: true },
+        { id: 2, text: "Implement components", completed: false },
+        { id: 3, text: "Write tests", completed: false },
+      ],
+    },
+    style: { width: 320, height: 300 },
   },
   {
-    id: 'checklist-3',
-    type: 'checklist',
-    position: { x: 450, y: 450 },
+    id: "4",
+    type: "webserverNode",
+    position: { x: 1350, y: 950 },
     data: {
-      title: 'Strategic Goals',
-      items: [
-        { id: 1, text: 'Increase market share by 15%', completed: false },
-        { id: 2, text: 'Improve user retention by 20%', completed: false },
-        { id: 3, text: 'Launch 3 new product initiatives', completed: true },
-        { id: 4, text: 'Expand to enterprise market', completed: false }
-      ]
-    }
-  },
-  {
-    id: 'web-1',
-    type: 'webBrowser',
-    position: { x: 100, y: 450 },
-    data: {
-      url: 'https://docs.github.com/en',
-      title: 'Product Documentation',
-      lastVisited: '7/3/2025 10:20 AM',
-      favicon: '🌐',
-      isLoading: false,
-      canGoBack: false,
-      canGoForward: false,
-      isRefreshing: false
-    }
+      label: "/dashboard",
+      deviceType: "desktop",
+      url: "https://stunning-computing-machine-x9w9qwprqvp3vq99-3000.app.github.dev/dashboard",
+      hasError: false,
+    },
+    style: { width: 1200, height: 800 },
   }
-];
+]

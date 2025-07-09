@@ -1,6 +1,6 @@
 export const ProgressBar = ({ progress }) => (
   <div className="w-full bg-gray-200 rounded-full h-2">
-    <div 
+    <div
       className="bg-black h-2 rounded-full transition-all duration-300 ease-in-out"
       style={{ width: `${progress}%` }}
       role="progressbar"
@@ -10,4 +10,4 @@ export const ProgressBar = ({ progress }) => (
       aria-label={`${progress}% complete`}
     />
   </div>
-);
+)

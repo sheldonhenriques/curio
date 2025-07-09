@@ -8,21 +8,23 @@ import ReactFlow, {
   Controls,
   Background,
   BackgroundVariant,
+  MiniMap,
 } from 'reactflow';
 
 import 'reactflow/dist/style.css';
-import ChecklistNode from '@/components/nodes/ChecklistNode';
-import WebBrowserNode from '@/components/nodes/WebBrowserNode';
-import { checklistNodes } from '@/data/nodes'
+import { initialNodes } from '@/data/nodes.js'
+import BaseNode from "@/components/nodes/basenode"
+import ChecklistNode from "@/components/nodes/checklist"
+import WebserverNode from "@/components/nodes/webserver"
 
 const nodeTypes = {
-  checklist: ChecklistNode,
-  webBrowser: WebBrowserNode,
-};
-
+  baseNode: BaseNode,
+  checklistNode: ChecklistNode,
+  webserverNode: WebserverNode,
+}
 
 export default function Canvas() {
-  const [nodes, setNodes, onNodesChange] = useNodesState(checklistNodes);
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
   const onConnect = useCallback(
@@ -40,9 +42,15 @@ export default function Canvas() {
         onConnect={onConnect}
         fitView
         nodeTypes={nodeTypes}
+        attributionPosition="bottom-left"
+        selectNodesOnDrag={false}
+        panOnDrag={[1, 2]}
+        selectionOnDrag={true}
+        minZoom={0.1}
       >
         <Controls />
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
+        <MiniMap />
       </ReactFlow>
     </div>
   );
