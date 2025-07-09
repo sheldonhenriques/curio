@@ -23,12 +23,14 @@ export const CHECKLIST_CONFIG = {
 };
 
 export const WEB_BROWSER_CONFIG = {
+  MIN_WIDTH: 300,
+  RESIZE_COLOR: '#3b82f6',
   DEFAULT_DESKTOP_SIZE: {
-    width: 1920,
-    height: 1080
+    width: 1200,
+    height: 800
   },
   VIEWPORT_PRESETS: [
-    { name: "Desktop", icon: Monitor, width: 1920, height: 1080 },
+    { name: "Desktop", icon: Monitor, width: 1200, height: 800 },
     { name: "Laptop", icon: Monitor, width: 1024, height: 768 },
     { name: "Tablet", icon: Tablet, width: 768, height: 1024 },
     { name: "Mobile", icon: Smartphone, width: 375, height: 667 },

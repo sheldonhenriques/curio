@@ -39,7 +39,6 @@ export const nodeHelpers = {
   })
 };
 
-
 export const calculateDesktopScale = (nodeWidth, nodeHeight) => {
   const availableWidth = nodeWidth - 20; // Account for padding
   const availableHeight = nodeHeight - 100; // Account for header/controls
@@ -50,39 +49,47 @@ export const calculateDesktopScale = (nodeWidth, nodeHeight) => {
   return Math.min(scaleX, scaleY, 1);
 };
 
-export const getContainerStyle = (isDesktopMode, nodeWidth, nodeHeight) => {
-  if (isDesktopMode) {
-    const scale = calculateDesktopScale(nodeWidth, nodeHeight);
-    
-    return {
-      width: WEB_BROWSER_CONFIG.DEFAULT_DESKTOP_SIZE.width,
-      height: WEB_BROWSER_CONFIG.DEFAULT_DESKTOP_SIZE.height,
-      transform: `scale(${scale})`,
-      transformOrigin: 'top left'
-    };
-  }
+export const getIframeStyle = (desktopMode) => {
+  if (!desktopMode) return {};
   
   return {
-    width: '100%',
-    height: '100%'
+    transform: 'scale(0.5)',
+    transformOrigin: '0 0',
+    width: '200%',
+    height: '200%'
   };
 };
 
-export const getIframeStyle = (isDesktopMode) => {
-  if (isDesktopMode) {
-    return {
-      width: WEB_BROWSER_CONFIG.DEFAULT_DESKTOP_SIZE.width,
-      height: WEB_BROWSER_CONFIG.DEFAULT_DESKTOP_SIZE.height
-    };
-  }
+export const calculateScale = (nodeWidth, nodeHeight, viewport) => {
+  const availableWidth = nodeWidth - 20; // Account for padding
+  const availableHeight = nodeHeight - 100; // Account for header/controls
   
-  return {};
+  const scaleX = availableWidth / viewport.width;
+  const scaleY = availableHeight / viewport.height;
+  
+  return Math.min(scaleX, scaleY, 1);
 };
 
 export const getViewportDisplayText = (node) => {
-  if (node.desktopMode) {
-    return `${WEB_BROWSER_CONFIG.DEFAULT_DESKTOP_SIZE.width}×${WEB_BROWSER_CONFIG.DEFAULT_DESKTOP_SIZE.height}`;
-  }
-  
-  return `${node.viewport.width}×${node.viewport.height}`;
+  return `${node.viewport?.width || 1200}×${node.viewport?.height || 800}`;
+};
+
+export const getContainerStyle = (viewport, scale = 0.3) => {
+  return {
+    width: `${viewport.width}px`,
+    height: `${viewport.height}px`,
+    transform: `scale(${scale})`,
+    transformOrigin: '0 0',
+    border: '1px solid #e5e7eb',
+    borderRadius: '4px',
+    overflow: 'hidden'
+  };
+};
+
+export const getWrapperStyle = (viewport, scale = 0.3) => {
+  return {
+    width: `${viewport.width * scale}px`,
+    height: `${viewport.height * scale}px`,
+    overflow: 'hidden'
+  };
 };

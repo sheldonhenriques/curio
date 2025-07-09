@@ -52,14 +52,10 @@ export const checklistNodes = [
     data: {
       title: "localhost:3000",
       url: "https://stunning-computing-machine-x9w9qwprqvp3vq99-3000.app.github.dev/",
-      desktopMode: true,
+      size: 'desktop',
       hasError: false,
       isLoading: true,
-      isDragging: false,
-      viewport: {
-        width: 1200,
-        height: 800
-      }
+      isDragging: false
     }
   }
 ];

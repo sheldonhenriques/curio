@@ -1,6 +1,5 @@
 import React, { useMemo, useCallback } from 'react';
 import { AlertCircle } from 'lucide-react';
-import { getContainerStyle, getIframeStyle } from '@/utils/nodeHelpers';
 import { WEB_BROWSER_CONFIG } from '@/constants/nodeConfig';
 
 const ErrorState = () => (
@@ -12,39 +11,8 @@ const ErrorState = () => (
   </div>
 );
 
-const IframePreview = ({ node, containerStyle, iframeStyle, onLoad, onError }) => (
-  <div className="w-full h-full relative">
-    {node.desktopMode ? (
-      <div style={containerStyle}>
-        <iframe
-          src={node.url}
-          className="w-full h-full border-0 rounded"
-          style={iframeStyle}
-          sandbox={WEB_BROWSER_CONFIG.IFRAME_SANDBOX_PERMISSIONS}
-          title={`Desktop preview of ${node.title}`}
-          onLoad={onLoad}
-          onError={onError}
-        />
-      </div>
-    ) : (
-      <iframe
-        src={node.url}
-        className="w-full h-full border-0 rounded"
-        sandbox={WEB_BROWSER_CONFIG.IFRAME_SANDBOX_PERMISSIONS}
-        title={`Responsive preview of ${node.title}`}
-        onLoad={onLoad}
-        onError={onError}
-      />
-    )}
-  </div>
-);
-
 const NodePreview = ({ node, onLoadError, onLoadSuccess }) => {
-  const { containerStyle, iframeStyle } = useMemo(() => ({
-    containerStyle: getContainerStyle(node.desktopMode, node.width, node.height),
-    iframeStyle: getIframeStyle(node.desktopMode)
-  }), [node.desktopMode, node.width, node.height]);
-
+  const VIEWPORT_PRESETS = WEB_BROWSER_CONFIG.VIEWPORT_PRESETS;
   const handleLoad = useCallback(() => {
     onLoadSuccess?.(node.id);
   }, [node.id, onLoadSuccess]);
@@ -53,19 +21,53 @@ const NodePreview = ({ node, onLoadError, onLoadSuccess }) => {
     onLoadError?.(node.id);
   }, [node.id, onLoadError]);
 
+  const { containerStyle, wrapperStyle } = useMemo(() => {
+    const scale = 0.3;
+    const sizeKey = (node.size || 'desktop').toLowerCase();
+    const match = VIEWPORT_PRESETS.find(p => p.name.toLowerCase() === sizeKey);
+    const viewportWidth = match?.width || 1280;
+    const viewportHeight = match?.height || 800;
+    
+    return {
+      // This is the actual iframe container
+      containerStyle: {
+        width: `${viewportWidth}px`,
+        height: `${viewportHeight}px`,
+        transform: `scale(${scale})`,
+        transformOrigin: '0 0',
+        border: '1px solid #e5e7eb',
+        borderRadius: '4px',
+        overflow: 'hidden'
+      },
+      // This wrapper contains the scaled iframe and defines the visible area
+      wrapperStyle: {
+        width: `${viewportWidth * scale}px`,
+        height: `${viewportHeight * scale}px`,
+        overflow: 'hidden'
+      }
+    };
+  }, [node.size]);
+
   if (node.hasError) {
     return <ErrorState />;
   }
 
   return (
-    <div className="flex-1 overflow-hidden p-1">
-      <IframePreview
-        node={node}
-        containerStyle={containerStyle}
-        iframeStyle={iframeStyle}
-        onLoad={handleLoad}
-        onError={handleError}
-      />
+    <div className="flex-1 overflow-hidden p-2">
+      <div className="w-full h-full flex justify-start">
+        <div style={wrapperStyle}>
+          <div style={containerStyle}>
+            <iframe
+              src={node.url}
+              className="w-full h-full border-0"
+              sandbox={WEB_BROWSER_CONFIG.IFRAME_SANDBOX_PERMISSIONS}
+              title={`${node.screen || 'desktop'} preview of ${node.title}`}
+              onLoad={handleLoad}
+              onError={handleError}
+            />
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
