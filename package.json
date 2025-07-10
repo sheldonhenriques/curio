@@ -9,6 +9,8 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@daytonaio/sdk": "^0.22.1",
+    "dotenv": "^17.2.0",
     "lucide-react": "^0.525.0",
     "next": "15.3.4",
     "react": "^19.0.0",

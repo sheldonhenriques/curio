@@ -28,7 +28,20 @@ export const initialNodes = [
     data: {
       label: "/dashboard",
       deviceType: "desktop",
-      url: "https://stunning-computing-machine-x9w9qwprqvp3vq99-3000.app.github.dev/dashboard",
+      url: "https://3000-8c9cfa1d-c054-4c29-84d6-d1eda254123a.proxy.daytona.work/",
+      hasError: false,
+    },
+    style: { width: 1200, height: 800 },
+  },
+  ,
+  {
+    id: "5",
+    type: "webserverNode",
+    position: { x: 2550, y: 950 },
+    data: {
+      label: "/dashboard",
+      deviceType: "desktop",
+      url: "https://3000-8c9cfa1d-c054-4c29-84d6-d1eda254123a.proxy.daytona.work/about",
       hasError: false,
     },
     style: { width: 1200, height: 800 },
