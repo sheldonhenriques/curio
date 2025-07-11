@@ -16,11 +16,13 @@ import { initialNodes } from '@/data/nodes.js'
 import BaseNode from "@/components/nodes/basenode"
 import ChecklistNode from "@/components/nodes/checklist"
 import WebserverNode from "@/components/nodes/webserver"
+import AIChatNode from "@/components/nodes/aichat"
 
 const nodeTypes = {
   baseNode: BaseNode,
   checklistNode: ChecklistNode,
   webserverNode: WebserverNode,
+  aichatNode: AIChatNode,
 }
 
 export default function Canvas() {

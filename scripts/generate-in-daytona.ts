@@ -65,7 +65,7 @@ async function generateWebsiteInDaytona(
       "npm install @anthropic-ai/claude-code@latest",
       projectDir,
       undefined,
-      180000 // 3 minute timeout
+      180 // 3 minute timeout
     );
 
     if (installResult.exitCode !== 0) {
@@ -196,7 +196,7 @@ SCRIPT_EOF`,
         ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
         NODE_PATH: `${projectDir}/node_modules`,
       },
-      600000 // 10 minute timeout
+      600 // 10 minute timeout
     );
 
     console.log("\nGeneration output:");
@@ -226,7 +226,7 @@ SCRIPT_EOF`,
         "npm install",
         projectDir,
         undefined,
-        300000 // 5 minute timeout
+        300 // 5 minute timeout
       );
 
       if (npmInstall.exitCode !== 0) {

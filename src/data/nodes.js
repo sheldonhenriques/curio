@@ -7,6 +7,16 @@ export const initialNodes = [
     style: { width: 1200, height: 800 },
   },
   {
+    id: "2",
+    type: "aichatNode",
+    position: { x: 450, y: 950 },
+    data: {
+      label: "AI Chat",
+      deviceType: "normal",
+    },
+    style: { width: 480, height: 600 },
+  },
+  {
     id: "3",
     type: "checklistNode",
     position: { x: 100, y: 950 },
@@ -33,7 +43,6 @@ export const initialNodes = [
     },
     style: { width: 1200, height: 800 },
   },
-  ,
   {
     id: "5",
     type: "webserverNode",
