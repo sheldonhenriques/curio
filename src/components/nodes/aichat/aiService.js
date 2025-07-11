@@ -1,40 +1,72 @@
-import { spawn } from 'child_process'
+export const executeAICommand = async (prompt, setIsLoading, setMessages, setStreamingMessage) => {
+    try {
+        setIsLoading(true)
+        setStreamingMessage("")
 
-export const executeAICommand = async (prompt, onStream) => {
-    return new Promise((resolve, reject) => {
-        const command = 'npx'
-        const args = ['tsx', 'scripts/generate-in-daytona.ts', '8c9cfa1d-c054-4c29-84d6-d1eda254123a', prompt]
-        
-        const process = spawn(command, args, {
-            stdio: ['pipe', 'pipe', 'pipe'],
-            shell: true
+        // Add user message
+        const userMessage = { id: Date.now(), type: "user", content: prompt, timestamp: new Date() }
+        setMessages(prev => [...prev, userMessage])
+
+        // Start AI response
+        const aiMessage = { id: Date.now() + 1, type: "ai", content: "", timestamp: new Date() }
+        setMessages(prev => [...prev, aiMessage])
+
+        // Execute the actual command with streaming
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 300000) // 5 minutes timeout
+
+        const response = await fetch('/api/ai-chat', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ prompt, sandboxIdArg : "8a68fc00-fcd4-4170-a625-3242aa7fd6b1" }),
+            signal: controller.signal
         })
 
-        let output = ''
-        let errorOutput = ''
+        clearTimeout(timeoutId)
 
-        process.stdout.on('data', (data) => {
-            const chunk = data.toString()
-            output += chunk
-            if (onStream) {
-                onStream(chunk)
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`)
+        }
+
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
+        let accumulatedContent = ""
+
+        try {
+            while (true) {
+                const { done, value } = await reader.read()
+                if (done) break
+
+                const chunk = decoder.decode(value, { stream: true })
+                accumulatedContent += chunk
+
+                setMessages(prev => prev.map(msg =>
+                    msg.id === aiMessage.id
+                        ? { ...msg, content: accumulatedContent }
+                        : msg
+                ))
             }
-        })
-
-        process.stderr.on('data', (data) => {
-            errorOutput += data.toString()
-        })
-
-        process.on('close', (code) => {
-            if (code === 0) {
-                resolve(output)
-            } else {
-                reject(new Error(`Command failed with code ${code}: ${errorOutput}`))
+        } catch (readerError) {
+            if (readerError.name === 'AbortError') {
+                throw new Error('Request timed out after 5 minutes')
             }
-        })
+            throw readerError
+        }
 
-        process.on('error', (error) => {
-            reject(error)
-        })
-    })
+    } catch (error) {
+        console.error("Error executing AI command:", error)
+        const errorMessage = {
+            id: Date.now() + 2,
+            type: "ai",
+            content: `Sorry, I encountered an error while processing your request: ${error.message}`,
+            timestamp: new Date(),
+            isError: true
+        }
+        setMessages(prev => [...prev, errorMessage])
+    } finally {
+        setIsLoading(false)
+        setStreamingMessage("")
+    }
 }

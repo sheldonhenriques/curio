@@ -38,7 +38,7 @@ export const initialNodes = [
     data: {
       label: "/dashboard",
       deviceType: "desktop",
-      url: "https://3000-8c9cfa1d-c054-4c29-84d6-d1eda254123a.proxy.daytona.work/",
+      url: "https://3000-8a68fc00-fcd4-4170-a625-3242aa7fd6b1.proxy.daytona.work/",
       hasError: false,
     },
     style: { width: 1200, height: 800 },
