@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import ReactFlow, {
   useNodesState,
   useEdgesState,
@@ -16,16 +16,45 @@ import { initialNodes } from '@/data/nodes.js'
 import BaseNode from "@/components/nodes/basenode"
 import ChecklistNode from "@/components/nodes/checklist"
 import WebserverNode from "@/components/nodes/webserver"
+import AIChatNode from "@/components/nodes/aichat"
 
 const nodeTypes = {
   baseNode: BaseNode,
   checklistNode: ChecklistNode,
   webserverNode: WebserverNode,
+  aichatNode: AIChatNode,
 }
 
-export default function Canvas() {
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+export default function Canvas({ project, previewUrl, sandboxStatus }) {
+  // Create project-specific nodes with sandbox integration
+  const projectNodes = useMemo(() => {
+    if (!project) return initialNodes;
+    
+    return initialNodes.map(node => {
+      // Update webserver nodes with the sandbox preview URL and status
+      if (node.type === 'webserverNode') {
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            url: previewUrl || node.data.url,
+            projectName: project.title,
+            sandboxStatus: sandboxStatus,
+            hasError: !previewUrl && (sandboxStatus === 'failed' || sandboxStatus === 'error')
+          }
+        };
+      }
+      return node;
+    });
+  }, [project, previewUrl, sandboxStatus]);
+
+  const [nodes, setNodes, onNodesChange] = useNodesState(projectNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+
+  // Update nodes when project or previewUrl changes
+  useEffect(() => {
+    setNodes(projectNodes);
+  }, [projectNodes, setNodes]);
 
   const onConnect = useCallback(
     (params) => setEdges((eds) => addEdge(params, eds)),

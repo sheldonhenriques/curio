@@ -7,6 +7,17 @@ export const initialNodes = [
     style: { width: 1200, height: 800 },
   },
   {
+    id: "2",
+    type: "aichatNode",
+    position: { x: 450, y: 950 },
+    data: {
+      label: "AI Chat",
+      deviceType: "normal",
+    },
+    style: { width: 480, height: 600 },
+    zIndex: 9999,
+  },
+  {
     id: "3",
     type: "checklistNode",
     position: { x: 100, y: 950 },
@@ -28,7 +39,19 @@ export const initialNodes = [
     data: {
       label: "/dashboard",
       deviceType: "desktop",
-      url: "https://stunning-computing-machine-x9w9qwprqvp3vq99-3000.app.github.dev/dashboard",
+      url: "https://3000-8a68fc00-fcd4-4170-a625-3242aa7fd6b1.proxy.daytona.work/",
+      hasError: false,
+    },
+    style: { width: 1200, height: 800 },
+  },
+  {
+    id: "5",
+    type: "webserverNode",
+    position: { x: 2550, y: 950 },
+    data: {
+      label: "/dashboard",
+      deviceType: "desktop",
+      url: "https://3000-8c9cfa1d-c054-4c29-84d6-d1eda254123a.proxy.daytona.work/about",
       hasError: false,
     },
     style: { width: 1200, height: 800 },
