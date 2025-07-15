@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X } from 'lucide-react';
+import { X, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 
 const colorOptions = [
@@ -28,10 +28,11 @@ export const ProjectCreateForm = ({ onClose, onSubmit }) => {
     status: 'on-track',
     tags: '',
     team: '',
-    totalTasks: 0,
-    sandboxId: ''
+    totalTasks: 0
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(false);
 
   const handleInputChange = (e) => {
     const { name, value, type } = e.target;
@@ -44,6 +45,8 @@ export const ProjectCreateForm = ({ onClose, onSubmit }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setError(null);
+    setSuccess(false);
 
     try {
       const projectData = {
@@ -60,10 +63,19 @@ export const ProjectCreateForm = ({ onClose, onSubmit }) => {
         ]
       };
 
-      await onSubmit(projectData);
-      onClose();
+      const result = await onSubmit(projectData);
+      
+      if (result) {
+        setSuccess(true);
+        
+        // Close the form after a short delay
+        setTimeout(() => {
+          onClose();
+        }, 1500);
+      }
     } catch (error) {
       console.error('Error creating project:', error);
+      setError(error.message || 'Failed to create project');
     } finally {
       setIsSubmitting(false);
     }
@@ -209,21 +221,24 @@ export const ProjectCreateForm = ({ onClose, onSubmit }) => {
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Sandbox ID (optional)
-            </label>
-            <input
-              type="text"
-              name="sandboxId"
-              value={formData.sandboxId}
-              onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md 
-                       bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                       focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Daytona sandbox ID"
-            />
-          </div>
+          {/* Success message */}
+          {success && (
+            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg p-4">
+              <h3 className="text-sm font-medium text-green-900 dark:text-green-100 mb-2">
+                Project created successfully!
+              </h3>
+              <p className="text-sm text-green-700 dark:text-green-300">
+                Your sandbox development environment is being set up in the background.
+              </p>
+            </div>
+          )}
+          
+          {/* Error message */}
+          {error && (
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg p-4">
+              <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
+            </div>
+          )}
 
           <div className="flex space-x-3 pt-4">
             <Button
@@ -240,9 +255,10 @@ export const ProjectCreateForm = ({ onClose, onSubmit }) => {
               disabled={isSubmitting || !formData.title || !formData.description}
               className="flex-1 px-4 py-2 bg-blue-600 text-white 
                        hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed 
-                       rounded-md"
+                       rounded-md flex items-center justify-center space-x-2"
             >
-              {isSubmitting ? 'Creating...' : 'Create Project'}
+              {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
+              <span>{isSubmitting ? 'Creating Project...' : 'Create Project'}</span>
             </Button>
           </div>
         </form>

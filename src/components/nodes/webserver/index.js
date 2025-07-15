@@ -93,6 +93,7 @@ export default function WebserverNode({ id, data, selected }) {
         onLoadError={handleLoadError}
         onLoadSuccess={handleLoadSuccess}
         onRetry={handleRetry}
+        sandboxStatus={data.sandboxStatus}
       />
     </div>
   )

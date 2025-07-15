@@ -5,8 +5,9 @@ import Project from '@/models/Project';
 export async function GET(request, { params }) {
   try {
     await connectToDatabase();
-    const project = await Project.findOne({ id: parseInt(params.id) });
+    const { id } = await params;
     
+    const project = await Project.findOne({ id: parseInt(id) });
     if (!project) {
       return NextResponse.json(
         { error: 'Project not found' },
@@ -16,7 +17,7 @@ export async function GET(request, { params }) {
     
     return NextResponse.json(project);
   } catch (error) {
-    console.error('Error fetching project:', error);
+    console.error('❌ [SERVER] Error fetching project:', error);
     return NextResponse.json(
       { error: 'Failed to fetch project' },
       { status: 500 }
@@ -27,16 +28,17 @@ export async function GET(request, { params }) {
 export async function PUT(request, { params }) {
   try {
     await connectToDatabase();
+    const { id } = await params;
     const body = await request.json();
     
     const project = await Project.findOneAndUpdate(
-      { id: parseInt(params.id) },
+      { id: parseInt(id) },
       { 
         ...body,
         updatedAt: 'just now',
         updatedAtTimestamp: new Date()
       },
-      { new: true, runValidators: true }
+      { new: true }
     );
     
     if (!project) {
@@ -59,8 +61,9 @@ export async function PUT(request, { params }) {
 export async function DELETE(request, { params }) {
   try {
     await connectToDatabase();
-    const project = await Project.findOneAndDelete({ id: parseInt(params.id) });
+    const { id } = await params;
     
+    const project = await Project.findOneAndDelete({ id: parseInt(id) });
     if (!project) {
       return NextResponse.json(
         { error: 'Project not found' },

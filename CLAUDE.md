@@ -112,8 +112,7 @@ This is a Next.js 15 application built with React 19 that implements a node-base
 
 **MongoDB Atlas Setup Requirements**:
 1. **Connection String Format**: `mongodb+srv://username:password@cluster.mongodb.net/curio?retryWrites=true&w=majority&appName=ClusterName`
-2. **Special Characters**: Password special characters must be URL encoded (e.g., `$` becomes `%24`)
-3. **Network Access**: IP address must be whitelisted in MongoDB Atlas Network Access
+3. **Network Access**: IP address must be whitelisted in MongoDB Atlas Network Access. Command for it is `curl -s ifconfig.me`
 4. **Database User**: Must have "Read and write to any database" permissions
 5. **Database Name**: Must be specified in connection string (e.g., `/curio`)
 
@@ -126,3 +125,8 @@ This is a Next.js 15 application built with React 19 that implements a node-base
 - Static `src/data/projects.js` has been removed
 - All project data now flows through MongoDB Atlas
 - UI components unchanged - only data source switched from static to API
+
+## Memories
+
+- Memorizing to track development progress and key insights for the Curio project.
+- Notes about the ability to memorize short textual insights about the project's development process

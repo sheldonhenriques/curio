@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import Project from '@/models/Project';
+import { scheduleSandboxCreation } from '@/services/backgroundJobs';
 
 export async function GET() {
   try {
@@ -8,7 +9,7 @@ export async function GET() {
     const projects = await Project.find({}).sort({ updatedAtTimestamp: -1 });
     return NextResponse.json(projects);
   } catch (error) {
-    console.error('Error fetching projects:', error);
+    console.error('❌ [SERVER] Error fetching projects:', error);
     return NextResponse.json(
       { error: 'Failed to fetch projects' },
       { status: 500 }
@@ -24,16 +25,28 @@ export async function POST(request) {
     const lastProject = await Project.findOne().sort({ id: -1 });
     const nextId = lastProject ? lastProject.id + 1 : 1;
     
+    // Create project immediately with 'creating' status
     const projectData = {
       ...body,
       id: nextId,
+      sandboxId: null,
+      sandboxStatus: 'creating',
+      sandboxError: null,
       updatedAt: 'just now'
     };
     
     const project = new Project(projectData);
     await project.save();
     
-    return NextResponse.json(project, { status: 201 });
+    // Schedule sandbox creation in the background
+    scheduleSandboxCreation(nextId, body.title);
+    
+    const response = {
+      ...project.toObject(),
+      message: 'Project created successfully. Sandbox is being created in the background.'
+    };
+    
+    return NextResponse.json(response, { status: 201 });
   } catch (error) {
     console.error('Error creating project:', error);
     return NextResponse.json(

@@ -68,6 +68,15 @@ const ProjectSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  sandboxStatus: {
+    type: String,
+    enum: ['creating', 'created', 'started', 'stopped', 'failed', 'not_found', 'error'],
+    default: null
+  },
+  sandboxError: {
+    type: String,
+    trim: true
+  },
   sections: [ProjectSectionSchema],
   updatedAtTimestamp: {
     type: Date,
