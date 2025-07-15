@@ -15,6 +15,7 @@ export const initialNodes = [
       deviceType: "normal",
     },
     style: { width: 480, height: 600 },
+    zIndex: 9999,
   },
   {
     id: "3",

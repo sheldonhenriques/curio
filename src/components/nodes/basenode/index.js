@@ -73,7 +73,7 @@ export default function BaseNode({
     return (
         <div
             ref={nodeRef}
-            className={`relative bg-white border-2 rounded-lg shadow-lg transition-all duration-200 w-full h-full ${selected ? "border-blue-500" : "border-gray-300"
+            className={`relative ${nodeType === "aichatNode" ? "bg-transparent" : "bg-white"} border-2 rounded-lg shadow-lg transition-all duration-200 w-full h-full ${selected ? "border-blue-500" : "border-gray-300"
                 } ${isHovered ? "shadow-xl" : ""}`}
             onMouseEnter={() => {
                 if (hoverTimeoutRef.current) {

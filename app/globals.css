@@ -24,3 +24,43 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.chat-messages {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.chat-messages:hover {
+  scrollbar-color: rgba(75, 85, 99, 0.8) transparent;
+}
+
+.chat-messages::-webkit-scrollbar {
+  width: 8px;
+}
+
+.chat-messages::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 0 4px 4px 0;
+}
+
+.chat-messages::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 0 4px 4px 0;
+}
+
+.chat-messages:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(75, 85, 99, 0.8);
+}
+
+.chat-messages:hover::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(75, 85, 99, 1);
+}

@@ -80,7 +80,13 @@ export default function AIChatNode({ id, data, selected, ...props }) {
                 </div>
 
                 {/* Messages */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                <div className="flex-1 overflow-hidden p-4 space-y-4">
+                    <div 
+                        className="h-full overflow-y-auto overflow-x-hidden space-y-4 chat-messages nowheel"
+                        onWheel={(e) => e.stopPropagation()}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onTouchStart={(e) => e.stopPropagation()}
+                    >
                     {messages.length === 0 ? (
                         <div className="text-center text-gray-500 mt-8">
                             <Bot className="w-12 h-12 mx-auto mb-2 text-gray-400" />
@@ -98,7 +104,7 @@ export default function AIChatNode({ id, data, selected, ...props }) {
                                     </div>
                                 )}
                                 <div
-                                    className={`max-w-[80%] p-3 rounded-lg ${
+                                    className={`max-w-[80%] p-3 rounded-lg break-words ${
                                         message.type === "user"
                                             ? "bg-blue-600 text-white"
                                             : message.isError
@@ -106,7 +112,7 @@ export default function AIChatNode({ id, data, selected, ...props }) {
                                             : "bg-white/80 text-gray-800 border border-white/20"
                                     }`}
                                 >
-                                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                                    <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
                                 </div>
                                 {message.type === "user" && (
                                     <div className="flex-shrink-0">
@@ -116,11 +122,12 @@ export default function AIChatNode({ id, data, selected, ...props }) {
                             </div>
                         ))
                     )}
-                    <div ref={messagesEndRef} />
+                        <div ref={messagesEndRef} />
+                    </div>
                 </div>
 
                 {/* Input */}
-                <form onSubmit={handleSubmit} className="p-4 border-t border-white/20 bg-white/10">
+                <form onSubmit={handleSubmit} className="p-4 border-t border-white/20 bg-white/10 nowheel">
                     <div className="flex gap-2">
                         <input
                             ref={inputRef}
