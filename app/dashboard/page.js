@@ -1,22 +1,29 @@
 'use client';
+import { useState } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { ProjectHeader } from '@/components/project/ProjectHeader';
 import { ProjectFilters } from '@/components/project/ProjectFilters';
 import { ProjectGrid } from '@/components/project/ProjectGrid';
+import { ProjectCreateForm } from '@/components/project/ProjectCreateForm';
 import { useProjects } from '@/hooks/useProjects';
 
 const DashboardPage = () => {
   const {
     projects,
+    loading,
+    error,
     activeTab,
     setActiveTab,
     searchTerm,
     handleSearchChange,
-    handleToggleStar
+    handleToggleStar,
+    handleCreateProject
   } = useProjects();
 
+  const [showCreateForm, setShowCreateForm] = useState(false);
+
   const handleNewProject = () => {
-    console.log('Create new project');
+    setShowCreateForm(true);
   };
 
   return (
@@ -34,11 +41,28 @@ const DashboardPage = () => {
           onSearchChange={handleSearchChange}
         />
         
-        <ProjectGrid 
-          projects={projects} 
-          onToggleStar={handleToggleStar} 
-        />
+        {loading ? (
+          <div className="flex justify-center items-center py-8">
+            <div className="text-gray-500">Loading projects...</div>
+          </div>
+        ) : error ? (
+          <div className="flex justify-center items-center py-8">
+            <div className="text-red-500">Error: {error}</div>
+          </div>
+        ) : (
+          <ProjectGrid 
+            projects={projects} 
+            onToggleStar={handleToggleStar} 
+          />
+        )}
       </div>
+
+      {showCreateForm && (
+        <ProjectCreateForm
+          onClose={() => setShowCreateForm(false)}
+          onSubmit={handleCreateProject}
+        />
+      )}
     </div>
   );
 };
