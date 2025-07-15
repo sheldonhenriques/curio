@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import Canvas from '@/components/flow/Canvas';
 import { Button } from '@/components/ui/Button';
+import { SandboxOfflineOverlay } from '@/components/project/SandboxOfflineOverlay';
 import { Loader2, AlertCircle, Play } from 'lucide-react';
 // Constants for sandbox startup steps
 const SANDBOX_STARTUP_STEPS = [
@@ -259,6 +260,14 @@ export default function ProductPage({ params }) {
   return (
     <div className="min-h-screen bg-white dark:bg-black">
       <Sidebar />
+      
+      {/* Sandbox Offline Overlay */}
+      {sandboxStatus === 'stopped' && (
+        <SandboxOfflineOverlay 
+          onRestart={startSandbox}
+          isRestarting={isStartingSandbox}
+        />
+      )}
       
       {/* Main content area */}
       <div className="ml-16 transition-all duration-300 px-6 py-4 flex flex-col h-screen">

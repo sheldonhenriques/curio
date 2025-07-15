@@ -32,12 +32,30 @@ export const ProjectCard = ({ project, onToggleStar }) => {
         <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">{project.description}</p>
 
         {/* Sandbox Status Indicator */}
-        {project.sandboxStatus && (
+        {(project.sandboxStatus || project.sandboxId) && (
           <div className="flex items-center gap-2 mb-2">
             {project.sandboxStatus === 'creating' && (
               <>
                 <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
                 <span className="text-sm text-blue-600 dark:text-blue-400">Setting up sandbox...</span>
+              </>
+            )}
+            {project.sandboxStatus === 'starting' && (
+              <>
+                <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+                <span className="text-sm text-blue-600 dark:text-blue-400">Starting sandbox...</span>
+              </>
+            )}
+            {project.sandboxStatus === 'started' && (
+              <>
+                <CheckCircle className="w-4 h-4 text-green-500" />
+                <span className="text-sm text-green-600 dark:text-green-400">Sandbox running</span>
+              </>
+            )}
+            {project.sandboxStatus === 'stopped' && (
+              <>
+                <AlertCircle className="w-4 h-4 text-yellow-500" />
+                <span className="text-sm text-yellow-600 dark:text-yellow-400">Sandbox stopped</span>
               </>
             )}
             {project.sandboxStatus === 'created' && (
@@ -46,10 +64,16 @@ export const ProjectCard = ({ project, onToggleStar }) => {
                 <span className="text-sm text-green-600 dark:text-green-400">Sandbox ready</span>
               </>
             )}
-            {project.sandboxStatus === 'failed' && (
+            {(project.sandboxStatus === 'failed' || project.sandboxStatus === 'error' || project.sandboxStatus === 'not_found') && (
               <>
                 <AlertCircle className="w-4 h-4 text-red-500" />
-                <span className="text-sm text-red-600 dark:text-red-400">Sandbox setup failed</span>
+                <span className="text-sm text-red-600 dark:text-red-400">Sandbox unavailable</span>
+              </>
+            )}
+            {(project.sandboxId && !project.sandboxStatus) && (
+              <>
+                <Loader2 className="w-4 h-4 text-gray-500 animate-spin" />
+                <span className="text-sm text-gray-600 dark:text-gray-400">Checking...</span>
               </>
             )}
           </div>

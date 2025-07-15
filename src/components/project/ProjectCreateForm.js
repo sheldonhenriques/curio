@@ -82,19 +82,19 @@ export const ProjectCreateForm = ({ onClose, onSubmit }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Create New Project</h2>
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 w-full max-w-lg max-h-[90vh] overflow-y-auto transform transition-all duration-200 scale-100 scrollbar-hide">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 rounded-t-xl">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Create New Project</h2>
           <button 
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 p-2 rounded-lg transition-colors"
           >
-            <X size={24} />
+            <X size={20} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Project Title *
@@ -105,9 +105,10 @@ export const ProjectCreateForm = ({ onClose, onSubmit }) => {
               value={formData.title}
               onChange={handleInputChange}
               required
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md 
+              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg 
                        bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                       focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                       focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all
+                       placeholder-gray-400 dark:placeholder-gray-500"
               placeholder="Enter project title"
             />
           </div>
@@ -121,32 +122,33 @@ export const ProjectCreateForm = ({ onClose, onSubmit }) => {
               value={formData.description}
               onChange={handleInputChange}
               required
-              rows={3}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md 
+              rows={4}
+              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg 
                        bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                       focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Enter project description"
+                       focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all
+                       placeholder-gray-400 dark:placeholder-gray-500 resize-none"
+              placeholder="Describe your project goals and objectives..."
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
               Color Theme
             </label>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-4 gap-3">
               {colorOptions.map((option) => (
                 <button
                   key={option.value}
                   type="button"
                   onClick={() => setFormData(prev => ({ ...prev, color: option.value }))}
-                  className={`flex items-center space-x-2 p-2 rounded-md border-2 transition-colors
+                  className={`flex items-center space-x-2 p-3 rounded-lg border-2 transition-all hover:scale-105
                     ${formData.color === option.value 
-                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' 
-                      : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500'
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 shadow-md' 
+                      : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700'
                     }`}
                 >
-                  <div className={`w-4 h-4 rounded-full ${option.color}`} />
-                  <span className="text-xs text-gray-700 dark:text-gray-300">{option.label}</span>
+                  <div className={`w-5 h-5 rounded-full ${option.color} shadow-sm`} />
+                  <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{option.label}</span>
                 </button>
               ))}
             </div>
@@ -160,9 +162,9 @@ export const ProjectCreateForm = ({ onClose, onSubmit }) => {
               name="status"
               value={formData.status}
               onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md 
+              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg 
                        bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                       focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                       focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
             >
               {statusOptions.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -182,9 +184,10 @@ export const ProjectCreateForm = ({ onClose, onSubmit }) => {
               value={formData.totalTasks}
               onChange={handleInputChange}
               min="0"
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md 
+              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg 
                        bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                       focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                       focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all
+                       placeholder-gray-400 dark:placeholder-gray-500"
               placeholder="0"
             />
           </div>
@@ -198,9 +201,10 @@ export const ProjectCreateForm = ({ onClose, onSubmit }) => {
               name="tags"
               value={formData.tags}
               onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md 
+              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg 
                        bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                       focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                       focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all
+                       placeholder-gray-400 dark:placeholder-gray-500"
               placeholder="e.g., Web, Mobile, Design"
             />
           </div>
@@ -214,9 +218,10 @@ export const ProjectCreateForm = ({ onClose, onSubmit }) => {
               name="team"
               value={formData.team}
               onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md 
+              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg 
                        bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                       focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                       focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all
+                       placeholder-gray-400 dark:placeholder-gray-500"
               placeholder="e.g., JD, SM, AK"
             />
           </div>
@@ -240,22 +245,24 @@ export const ProjectCreateForm = ({ onClose, onSubmit }) => {
             </div>
           )}
 
-          <div className="flex space-x-3 pt-4">
+          <div className="flex space-x-4 pt-6 border-t border-gray-200 dark:border-gray-700">
             <Button
               type="button"
+              variant="secondary"
               onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 
-                       text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 
-                       hover:bg-gray-50 dark:hover:bg-gray-600 rounded-md"
+              className="flex-1 border border-gray-300 dark:border-gray-600 
+                       dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600
+                       transition-all hover:scale-105"
             >
               Cancel
             </Button>
             <Button
               type="submit"
               disabled={isSubmitting || !formData.title || !formData.description}
-              className="flex-1 px-4 py-2 bg-blue-600 text-white 
-                       hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed 
-                       rounded-md flex items-center justify-center space-x-2"
+              className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white 
+                       hover:from-blue-700 hover:to-blue-800 disabled:bg-gray-400 disabled:cursor-not-allowed 
+                       rounded-lg font-medium flex items-center justify-center space-x-2
+                       transition-all hover:scale-105 shadow-lg"
             >
               {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
               <span>{isSubmitting ? 'Creating Project...' : 'Create Project'}</span>

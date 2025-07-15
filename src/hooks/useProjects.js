@@ -17,7 +17,16 @@ export const useProjects = () => {
         throw new Error('Failed to fetch projects');
       }
       const data = await response.json();
-      setProjects(data);
+      
+      // For projects with sandboxId but static status, clear the status to show "Checking..."
+      const processedData = data.map(project => {
+        if (project.sandboxId && (project.sandboxStatus === 'created' || project.sandboxStatus === 'failed')) {
+          return { ...project, sandboxStatus: null };
+        }
+        return project;
+      });
+      
+      setProjects(processedData);
       setError(null);
     } catch (err) {
       setError(err.message);
@@ -61,9 +70,9 @@ export const useProjects = () => {
                 sandboxStatus: p.sandboxStatus,
                 sandboxId: p.sandboxId 
               })));
-              setProjects(data);
               
-              // Also check individual sandbox statuses via Daytona SDK
+              // Also check individual sandbox statuses via Daytona SDK and update project status
+              const updatedProjects = [...data];
               for (const project of data.filter(p => p.sandboxId)) {
                 try {
                   console.log(`🔍 Checking sandbox status for project ${project.id}...`);
@@ -72,11 +81,23 @@ export const useProjects = () => {
                   if (statusResponse.ok) {
                     const statusData = await statusResponse.json();
                     console.log(`📊 Live sandbox status for project ${project.id}:`, statusData);
+                    
+                    // Update the project's sandbox status with live status
+                    const projectIndex = updatedProjects.findIndex(p => p.id === project.id);
+                    if (projectIndex !== -1) {
+                      updatedProjects[projectIndex].sandboxStatus = statusData.status;
+                      if (statusData.previewUrl) {
+                        updatedProjects[projectIndex].previewUrl = statusData.previewUrl;
+                      }
+                    }
                   }
                 } catch (error) {
                   console.error(`❌ Error checking sandbox status for project ${project.id}:`, error);
                 }
               }
+              
+              // Update projects with live status data
+              setProjects(updatedProjects);
               
               // Check if we should stop polling (only stop if no creating projects)
               const stillCreating = data.filter(p => p.sandboxStatus === 'creating');
