@@ -70,6 +70,8 @@ This is a Next.js 15 application built with React 19 that implements a node-base
   tags: [String],                // Array of project tags/categories
   team: [String],                // Array of team member initials/IDs
   sandboxId: String,             // Daytona sandbox ID for development environment integration
+  sandboxStatus: String,         // Sandbox status: "creating", "created", "started", "stopped", "failed"
+  sandboxError: String,          // Error message if sandbox creation/operation failed
   sections: [{                   // Project sections/phases
     name: String,                // Section name
     status: String               // Section status: "Not Started", "Concept", "In Progress", "Completed"
@@ -97,12 +99,24 @@ This is a Next.js 15 application built with React 19 that implements a node-base
 - `/src/hooks/useProjects.js` - React hook for project CRUD operations
 - `/src/components/project/ProjectCreateForm.js` - Project creation modal form
 
+**Sandbox Management Files**:
+- `/src/services/sandboxService.js` - Core Daytona SDK integration for sandbox operations
+- `/src/services/backgroundJobs.js` - Background job queue for sandbox creation
+- `/src/hooks/useSandboxTimeout.js` - React hook for managing sandbox inactivity timeouts
+- `/app/api/projects/[id]/sandbox/` - API routes for sandbox management operations
+
 **API Endpoints**:
 - `GET /api/projects` - Fetch all projects (sorted by updatedAtTimestamp desc)
 - `POST /api/projects` - Create new project (auto-generates sequential ID)
 - `GET /api/projects/[id]` - Get specific project by ID
 - `PUT /api/projects/[id]` - Update project (includes star toggle)
 - `DELETE /api/projects/[id]` - Delete project
+
+**Sandbox Management API Endpoints**:
+- `POST /api/projects/[id]/sandbox/retry` - Retry sandbox creation for a project
+- `POST /api/projects/[id]/sandbox/start` - Start an existing sandbox
+- `GET /api/projects/[id]/sandbox/status` - Get sandbox status and preview URL
+- `POST /api/projects/[id]/sandbox/stop` - Stop a running sandbox
 
 **Dashboard Integration**:
 - Projects are loaded from MongoDB Atlas via `/src/hooks/useProjects.js`
@@ -125,6 +139,34 @@ This is a Next.js 15 application built with React 19 that implements a node-base
 - Static `src/data/projects.js` has been removed
 - All project data now flows through MongoDB Atlas
 - UI components unchanged - only data source switched from static to API
+
+## Sandbox Management System
+
+**Current Status**: ✅ **IMPLEMENTED AND WORKING**
+
+**Overview**: Integrated Daytona SDK for creating and managing development sandbox environments directly from projects.
+
+**Core Features**:
+- **Sandbox Creation**: Automatically creates Next.js development environments using Daytona
+- **Background Processing**: Sandbox creation runs asynchronously via background job queue
+- **Lifecycle Management**: Start, stop, and monitor sandbox status
+- **Inactivity Timeout**: Automatically stops sandboxes after 10 minutes of inactivity
+- **Error Handling**: Robust error tracking with retry functionality
+
+**Environment Requirements**:
+- `DAYTONA_API_KEY` - Required environment variable for Daytona SDK authentication
+
+**Sandbox Workflow**:
+1. **Creation**: Project creation triggers background sandbox setup with Next.js template
+2. **Status Tracking**: Projects track sandbox status (`creating`, `created`, `started`, `stopped`, `failed`)
+3. **Preview URLs**: Live preview links generated when sandbox is running
+4. **Auto-Stop**: Inactive sandboxes automatically stop after timeout to save resources
+
+**Technical Implementation**:
+- Sandbox operations use Daytona SDK with Node.js 20 base image
+- Next.js projects created with TypeScript, Tailwind CSS, and ESLint
+- Development server runs on port 3000 with auto-restart capabilities
+- Background job queue prevents blocking UI during sandbox operations
 
 ## Memories
 
