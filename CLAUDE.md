@@ -88,7 +88,7 @@ This is a Next.js 15 application built with React 19 that implements a node-base
 **Connection Details**:
 - **Database**: MongoDB Atlas cloud database
 - **Connection**: `src/lib/mongodb.js` - Mongoose connection with caching and Stable API v1
-- **Environment**: `.env` file contains `MONGODB_URI` and `MONGODB_DB_NAME`
+- **Environment**: `.env` file contains `MONGODB_URI`
 - **Database Name**: `curio` (specified in connection string)
 
 **Key Files Implemented**:
