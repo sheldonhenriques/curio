@@ -24,7 +24,7 @@ This is a Next.js 15 application built with React 19 that implements a node-base
 - **BaseNode** (`src/components/nodes/basenode/`): Core reusable node component with hover controls, sizing options, and connection handles
 - **ChecklistNode**: Task management nodes with interactive checklists
 - **WebserverNode**: Displays live web content with iframe previews and error handling
-- **AIChatNode**: Interactive AI chat interface nodes
+- **AIChatNode**: Interactive AI chat interface nodes with real-time WebSocket communication and Claude Code CLI integration
 
 **Node Management**:
 - Nodes support multiple device sizes (desktop, tablet, mobile) with responsive layouts
@@ -48,7 +48,8 @@ This is a Next.js 15 application built with React 19 that implements a node-base
 - App Router architecture with pages in `app/` directory
 - Reusable UI components in `src/components/ui/`
 - Project management features for organizing node-based workflows
-- API routes for AI chat functionality (`app/api/ai-chat/route.js`)
+- API routes for AI chat functionality (`app/api/ai-chat/route.js`) with streaming support and sandbox integration
+- WebSocket server for real-time communication (`server.js`)
 
 ## Database Setup
 
@@ -167,6 +168,53 @@ This is a Next.js 15 application built with React 19 that implements a node-base
 - Next.js projects created with TypeScript, Tailwind CSS, and ESLint
 - Development server runs on port 3000 with auto-restart capabilities
 - Background job queue prevents blocking UI during sandbox operations
+
+## AI Chat System
+
+**Current Status**: ✅ **IMPLEMENTED AND WORKING**
+
+**Overview**: Advanced real-time AI chat system with WebSocket communication and direct Claude Code CLI integration within Daytona sandboxes.
+
+**Core Features**:
+- **Real-time Communication**: WebSocket-based bidirectional messaging with auto-reconnection
+- **Claude Code Integration**: Direct execution of Claude Code CLI within project sandboxes
+- **Streaming Responses**: Server-sent events for live AI response updates
+- **Rich Message Types**: Visual differentiation for user messages, AI responses, tool usage, system messages, and errors
+- **Session Persistence**: Chat history maintained in localStorage per node
+- **Project Context**: AI works directly within existing Next.js projects
+
+**Technical Architecture**:
+- **WebSocket Server** (`server.js`): Custom WebSocket server with session management and keepalive
+- **WebSocket Hook** (`src/hooks/useClaudeWebSocket.js`): React hook for WebSocket connection management
+- **AI Chat Node** (`src/components/nodes/aichat/index.js`): Enhanced UI with message persistence and rich formatting
+- **API Route** (`app/api/ai-chat/route.js`): Streaming API with Claude CLI execution and sandbox integration
+
+**Key Features**:
+- **Connection Management**: Auto-reconnection with 3-second delay and connection status indicators
+- **Message Processing**: Real-time parsing of Claude CLI JSON output for different message types
+- **Sandbox Integration**: Validates project existence and executes AI within sandbox context
+- **Error Handling**: Comprehensive error tracking with user-friendly messages
+- **Tool Visualization**: Live display of AI tool usage and execution progress
+
+**Environment Requirements**:
+- `DAYTONA_API_KEY` - Required for sandbox integration
+- WebSocket server runs on port 3001 alongside Next.js development server
+
+**Message Types Supported**:
+- User messages with timestamps
+- AI responses with thinking indicators
+- Tool usage notifications
+- System messages (collapsible)
+- Error messages with retry options
+- Status updates and completion notifications
+
+**Workflow**:
+1. **Connection**: WebSocket establishes connection with auto-reconnection
+2. **Message Sending**: User messages sent via WebSocket to server
+3. **Validation**: Server validates project and sandbox accessibility
+4. **AI Execution**: Claude Code CLI executed within sandbox context
+5. **Streaming**: Real-time output streamed back to client
+6. **Rendering**: Different message types rendered with appropriate UI
 
 ## Memories
 
