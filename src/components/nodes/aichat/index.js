@@ -1,9 +1,9 @@
 "use client"
 
 import { useState, useRef, useCallback, useEffect } from "react"
-import { MessageCircle, Send, Bot, User, Loader2 } from "lucide-react"
+import { MessageCircle, Send, Bot, User, Loader2, RefreshCw, AlertCircle } from "lucide-react"
 import BaseNode from "@/components/nodes/basenode"
-import { executeAICommand } from "@/components/nodes/aichat/aiService"
+import { useClaudeWebSocket } from "@/hooks/useClaudeWebSocket"
 
 const AI_CHAT_SIZES = {
     compact: { width: 400, height: 500, icon: <MessageCircle className="w-4 h-4" /> },
@@ -15,15 +15,21 @@ export default function AIChatNode({ id, data, selected, ...props }) {
     const [messages, setMessages] = useState([])
     const [inputValue, setInputValue] = useState("")
     const [isLoading, setIsLoading] = useState(false)
-    const [streamingMessage, setStreamingMessage] = useState("")
+    const [currentSessionId, setCurrentSessionId] = useState(null)
+    const [connectionStatus, setConnectionStatus] = useState('disconnected')
     const messagesEndRef = useRef(null)
     const inputRef = useRef(null)
+    const { isConnected, connectionError, sendMessage, subscribe, reconnect } = useClaudeWebSocket()
 
-    // Load persisted messages on component mount
+    // Load persisted messages and session on component mount
     useEffect(() => {
         const savedMessages = localStorage.getItem(`aichat-${id}`)
+        const savedSessionId = localStorage.getItem(`aichat-session-${id}`)
         if (savedMessages) {
             setMessages(JSON.parse(savedMessages))
+        }
+        if (savedSessionId) {
+            setCurrentSessionId(savedSessionId)
         }
     }, [id])
 
@@ -34,26 +40,179 @@ export default function AIChatNode({ id, data, selected, ...props }) {
         }
     }, [messages, id])
 
+    // Save session ID to localStorage whenever it changes
+    useEffect(() => {
+        if (currentSessionId) {
+            localStorage.setItem(`aichat-session-${id}`, currentSessionId)
+        }
+    }, [currentSessionId, id])
+
     // Auto-scroll to bottom when new messages arrive
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-    }, [messages, streamingMessage])
+    }, [messages])
+
+    // WebSocket message handler
+    useEffect(() => {
+        if (!isConnected) return
+
+        const unsubscribe = subscribe((message) => {
+            switch (message.type) {
+                case 'connection':
+                    // Connection established
+                    break
+
+                case 'json_message':
+                    // Add each JSON message as a separate bubble
+                    // Keep thinking message until completion/error
+                    const jsonData = message.data
+                    let newMessage = null
+                    
+                    if (jsonData.type === 'tool_use') {
+                        newMessage = {
+                            id: `${Date.now()}-${Math.random()}`,
+                            type: 'tool_use',
+                            content: jsonData.name,
+                            toolData: jsonData,
+                            timestamp: new Date()
+                        }
+                    } else if (jsonData.type === 'thinking') {
+                        newMessage = {
+                            id: `${Date.now()}-${Math.random()}`,
+                            type: 'thinking',
+                            content: jsonData.thinking || jsonData.content || 'Thinking...',
+                            timestamp: new Date()
+                        }
+                    } else if (jsonData.type === 'assistant' && jsonData.message?.content) {
+                        const textContent = jsonData.message.content
+                            .filter(block => block.type === 'text')
+                            .map(block => block.text)
+                            .join('')
+                        
+                        if (textContent.trim()) {
+                            newMessage = {
+                                id: `${Date.now()}-${Math.random()}`,
+                                type: 'claude_response',
+                                content: textContent,
+                                timestamp: new Date()
+                            }
+                        }
+                    } else if (jsonData.type === 'system' && jsonData.subtype !== 'init') {
+                        // Only show non-init system messages
+                        newMessage = {
+                            id: `${Date.now()}-${Math.random()}`,
+                            type: 'system',
+                            content: 'System',
+                            systemData: jsonData,
+                            timestamp: new Date(),
+                            isCollapsed: true
+                        }
+                    }
+                    
+                    if (newMessage) {
+                        setMessages(prev => [...prev, newMessage])
+                    }
+                    break
+
+                case 'status':
+                case 'progress':
+                case 'claude_message':
+                case 'tool_use':
+                case 'tool_result':
+                case 'thinking':
+                    // All these are now handled by json_message to prevent duplicates
+                    break
+
+                case 'session_update':
+                    if (message.sessionId) {
+                        setCurrentSessionId(message.sessionId)
+                    }
+                    break
+
+                case 'complete':
+                    // Stop loading (removes thinking bubble) - don't add completion bubble if message is empty
+                    if (message.message && message.message.trim()) {
+                        setMessages(prev => [...prev, {
+                            id: `${Date.now()}-${Math.random()}`,
+                            type: 'completion',
+                            content: message.message,
+                            timestamp: new Date()
+                        }])
+                    }
+                    setCurrentSessionId(message.sessionId)
+                    setIsLoading(false)
+                    break
+
+                case 'error':
+                    // Add error message and stop loading (removes thinking bubble)
+                    setMessages(prev => [...prev, {
+                        id: `${Date.now()}-${Math.random()}`,
+                        type: 'error',
+                        content: message.message,
+                        timestamp: new Date()
+                    }])
+                    setIsLoading(false)
+                    break
+            }
+        })
+
+        return unsubscribe
+    }, [isConnected, subscribe])
+
+    // Update connection status
+    useEffect(() => {
+        if (isConnected) {
+            setConnectionStatus('connected')
+        } else if (connectionError) {
+            setConnectionStatus('error')
+        } else {
+            setConnectionStatus('connecting')
+        }
+    }, [isConnected, connectionError])
 
 
     const handleSubmit = useCallback(async (e) => {
         e.preventDefault()
-        if (!inputValue.trim() || isLoading) return
+        if (!inputValue.trim() || isLoading || !isConnected) return
 
         const prompt = inputValue.trim()
         setInputValue("")
+        setIsLoading(true)
+
+        // Add user message
+        const userMessage = { 
+            id: Date.now(), 
+            type: "user", 
+            content: prompt, 
+            timestamp: new Date() 
+        }
         
-        await executeAICommand(prompt, setIsLoading, setMessages, setStreamingMessage)
-    }, [inputValue, isLoading, setIsLoading, setMessages, setStreamingMessage])
+        setMessages(prev => [...prev, userMessage])
+
+        // Send message via WebSocket
+        const success = sendMessage({
+            type: 'chat',
+            prompt,
+            projectId: data?.projectId,
+            nodeId: id,
+            sessionId: currentSessionId
+        })
+
+        if (!success) {
+            setIsLoading(false)
+        }
+    }, [inputValue, isLoading, isConnected, sendMessage, data?.projectId, id, currentSessionId])
 
     const handleClearChat = useCallback(() => {
         setMessages([])
+        setCurrentSessionId(null)
         localStorage.removeItem(`aichat-${id}`)
+        localStorage.removeItem(`aichat-session-${id}`)
     }, [id])
+
+    const handleReconnect = useCallback(() => {
+        reconnect()
+    }, [reconnect])
 
     return (
         <BaseNode
@@ -70,13 +229,29 @@ export default function AIChatNode({ id, data, selected, ...props }) {
                     <div className="flex items-center gap-2">
                         <Bot className="w-5 h-5 text-blue-600" />
                         <span className="font-medium text-gray-800">AI Chat</span>
+                        <div className={`w-2 h-2 rounded-full ${
+                            connectionStatus === 'connected' ? 'bg-green-500' :
+                            connectionStatus === 'error' ? 'bg-red-500' :
+                            'bg-yellow-500 animate-pulse'
+                        }`} title={connectionStatus} />
                     </div>
-                    <button
-                        onClick={handleClearChat}
-                        className="text-xs text-gray-600 hover:text-gray-800 transition-colors"
-                    >
-                        Clear
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {connectionStatus === 'error' && (
+                            <button
+                                onClick={handleReconnect}
+                                className="text-xs text-gray-600 hover:text-gray-800 transition-colors flex items-center gap-1"
+                            >
+                                <RefreshCw className="w-3 h-3" />
+                                Reconnect
+                            </button>
+                        )}
+                        <button
+                            onClick={handleClearChat}
+                            className="text-xs text-gray-600 hover:text-gray-800 transition-colors"
+                        >
+                            Clear
+                        </button>
+                    </div>
                 </div>
 
                 {/* Messages */}
@@ -91,36 +266,183 @@ export default function AIChatNode({ id, data, selected, ...props }) {
                         <div className="text-center text-gray-500 mt-8">
                             <Bot className="w-12 h-12 mx-auto mb-2 text-gray-400" />
                             <p>Start a conversation with AI</p>
+                            {connectionStatus !== 'connected' && (
+                                <div className="mt-4 flex items-center justify-center gap-2 text-sm">
+                                    <AlertCircle className="w-4 h-4" />
+                                    <span>
+                                        {connectionStatus === 'error' ? 'Connection error' : 'Connecting...'}
+                                    </span>
+                                </div>
+                            )}
                         </div>
                     ) : (
-                        messages.map((message) => (
-                            <div
-                                key={message.id}
-                                className={`flex gap-3 ${message.type === "user" ? "justify-end" : "justify-start"}`}
-                            >
-                                {message.type === "ai" && (
-                                    <div className="flex-shrink-0">
-                                        <Bot className="w-6 h-6 text-blue-600" />
+                        <>
+                        {messages.map((message) => {
+                            // Helper function to render timestamp
+                            const formatTime = (timestamp) => {
+                                return new Date(timestamp).toLocaleTimeString('en-US', { 
+                                    hour: '2-digit', 
+                                    minute: '2-digit',
+                                    hour12: false 
+                                })
+                            }
+
+                            // User messages
+                            if (message.type === "user") {
+                                return (
+                                    <div key={message.id} className="flex gap-3 justify-end">
+                                        <div className="max-w-[80%] p-3 rounded-lg bg-blue-600 text-white">
+                                            <div className="flex items-center justify-between mb-1">
+                                                <span className="text-xs font-medium">User</span>
+                                                <span className="text-xs opacity-70">{formatTime(message.timestamp)}</span>
+                                            </div>
+                                            <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+                                        </div>
+                                        <div className="flex-shrink-0">
+                                            <User className="w-6 h-6 text-gray-600" />
+                                        </div>
                                     </div>
-                                )}
-                                <div
-                                    className={`max-w-[80%] p-3 rounded-lg break-words ${
-                                        message.type === "user"
-                                            ? "bg-blue-600 text-white"
-                                            : message.isError
-                                            ? "bg-red-100 text-red-800 border border-red-200"
-                                            : "bg-white/80 text-gray-800 border border-white/20"
-                                    }`}
-                                >
-                                    <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+                                )
+                            }
+
+                            // Tool usage messages (green bubbles)
+                            if (message.type === "tool_use") {
+                                const toolDisplay = message.toolData?.input?.file_path 
+                                    ? `${message.content}(${message.toolData.input.file_path})`
+                                    : message.content
+                                
+                                return (
+                                    <div key={message.id} className="flex gap-3 justify-start">
+                                        <div className="flex-shrink-0">
+                                            <div className="w-6 h-6 bg-green-600 rounded-full flex items-center justify-center">
+                                                <span className="text-white text-xs">🔧</span>
+                                            </div>
+                                        </div>
+                                        <div className="max-w-[80%] p-3 rounded-lg bg-green-600 text-white">
+                                            <div className="flex items-center justify-between mb-1">
+                                                <span className="text-xs font-medium">{toolDisplay}</span>
+                                                <span className="text-xs opacity-70">{formatTime(message.timestamp)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )
+                            }
+
+                            // System messages (collapsible)
+                            if (message.type === "system") {
+                                return (
+                                    <div key={message.id} className="flex gap-3 justify-start">
+                                        <div className="flex-shrink-0">
+                                            <div className="w-6 h-6 bg-gray-600 rounded-full flex items-center justify-center">
+                                                <span className="text-white text-xs">⚙️</span>
+                                            </div>
+                                        </div>
+                                        <div className="max-w-[80%] p-3 rounded-lg bg-gray-600 text-white cursor-pointer">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-xs font-medium">System (init)</span>
+                                                <span className="text-xs">▶</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )
+                            }
+
+                            // Thinking messages (from Claude CLI)
+                            if (message.type === "thinking") {
+                                return (
+                                    <div key={message.id} className="flex gap-3 justify-start">
+                                        <div className="flex-shrink-0">
+                                            <Bot className="w-6 h-6 text-blue-600" />
+                                        </div>
+                                        <div className="max-w-[80%] p-3 rounded-lg bg-gray-600 text-white">
+                                            <div className="flex items-center gap-2">
+                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                                <span className="text-sm">Thinking...</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )
+                            }
+
+
+                            // Claude response messages
+                            if (message.type === "claude_response") {
+                                return (
+                                    <div key={message.id} className="flex gap-3 justify-start">
+                                        <div className="flex-shrink-0">
+                                            <Bot className="w-6 h-6 text-blue-600" />
+                                        </div>
+                                        <div className="max-w-[80%] p-3 rounded-lg bg-white/80 text-gray-800 border border-white/20">
+                                            <div className="flex items-center justify-between mb-1">
+                                                <span className="text-xs font-medium text-gray-600">Claude</span>
+                                                <span className="text-xs text-gray-500">{formatTime(message.timestamp)}</span>
+                                            </div>
+                                            <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+                                        </div>
+                                    </div>
+                                )
+                            }
+
+                            // Status messages  
+                            if (message.type === "status") {
+                                return (
+                                    <div key={message.id} className="flex gap-3 justify-start">
+                                        <div className="flex-shrink-0">
+                                            <Bot className="w-6 h-6 text-blue-600" />
+                                        </div>
+                                        <div className="max-w-[80%] p-3 rounded-lg bg-blue-100 text-blue-800 border border-blue-200">
+                                            <p className="text-sm">{message.content}</p>
+                                        </div>
+                                    </div>
+                                )
+                            }
+
+                            // Completion messages
+                            if (message.type === "completion") {
+                                return (
+                                    <div key={message.id} className="flex gap-3 justify-start">
+                                        <div className="flex-shrink-0">
+                                            <Bot className="w-6 h-6 text-green-600" />
+                                        </div>
+                                        <div className="max-w-[80%] p-3 rounded-lg bg-green-100 text-green-800 border border-green-200">
+                                            <p className="text-sm">{message.content}</p>
+                                        </div>
+                                    </div>
+                                )
+                            }
+
+                            // Error messages
+                            if (message.type === "error") {
+                                return (
+                                    <div key={message.id} className="flex gap-3 justify-start">
+                                        <div className="flex-shrink-0">
+                                            <AlertCircle className="w-6 h-6 text-red-600" />
+                                        </div>
+                                        <div className="max-w-[80%] p-3 rounded-lg bg-red-100 text-red-800 border border-red-200">
+                                            <p className="text-sm">❌ {message.content}</p>
+                                        </div>
+                                    </div>
+                                )
+                            }
+
+                            return null
+                        })}
+                        
+                        {/* Show thinking message at the bottom if we're loading */}
+                        {isLoading && (
+                            <div className="flex gap-3 justify-start">
+                                <div className="flex-shrink-0">
+                                    <Bot className="w-6 h-6 text-blue-600" />
                                 </div>
-                                {message.type === "user" && (
-                                    <div className="flex-shrink-0">
-                                        <User className="w-6 h-6 text-gray-600" />
+                                <div className="max-w-[80%] p-3 rounded-lg bg-gray-600 text-white">
+                                    <div className="flex items-center gap-2">
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                        <span className="text-sm">Thinking...</span>
                                     </div>
-                                )}
+                                </div>
                             </div>
-                        ))
+                        )}
+                        </>
                     )}
                         <div ref={messagesEndRef} />
                     </div>
@@ -136,11 +458,11 @@ export default function AIChatNode({ id, data, selected, ...props }) {
                             onChange={(e) => setInputValue(e.target.value)}
                             placeholder="Ask AI anything..."
                             className="flex-1 px-3 py-2 border border-white/20 rounded-lg bg-white/80 text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                            disabled={isLoading}
+                            disabled={isLoading || !isConnected}
                         />
                         <button
                             type="submit"
-                            disabled={!inputValue.trim() || isLoading}
+                            disabled={!inputValue.trim() || isLoading || !isConnected}
                             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                             {isLoading ? (

@@ -1,13 +1,19 @@
-import { spawn } from "child_process";
-import path from "path";
+import { Daytona } from "@daytonaio/sdk";
 
 export async function POST(req) {
   try {
-    const { prompt, sandboxIdArg } = await req.json();
+    const { prompt, projectId } = await req.json();
     
     if (!prompt) {
       return new Response(
         JSON.stringify({ error: "Prompt is required" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!projectId) {
+      return new Response(
+        JSON.stringify({ error: "Project ID is required" }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
@@ -18,183 +24,281 @@ export async function POST(req) {
         { status: 500, headers: { "Content-Type": "application/json" } }
       );
     }
+
+    console.log("[AI-CHAT] Processing request for project:", projectId);
+    console.log("[AI-CHAT] User prompt:", prompt);
     
-    console.log("[API] Starting Daytona generation for prompt:", prompt, sandboxIdArg);
-    if (sandboxIdArg) {
-      console.log("[API] Using existing sandbox:", sandboxIdArg);
+    // Get project data to retrieve sandbox ID
+    const projectResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/projects/${projectId}`);
+    if (!projectResponse.ok) {
+      return new Response(
+        JSON.stringify({ error: "Project not found" }),
+        { status: 404, headers: { "Content-Type": "application/json" } }
+      );
     }
+    
+    const project = await projectResponse.json();
+    if (!project.sandboxId) {
+      return new Response(
+        JSON.stringify({ error: "Project does not have an active sandbox" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log("[AI-CHAT] Using sandbox:", project.sandboxId);
     
     // Create a streaming response
     const encoder = new TextEncoder();
     const stream = new TransformStream();
     const writer = stream.writable.getWriter();
     
-    // Start the async generation
+    // Start the async processing
     (async () => {
       try {
-        // Use the generate-in-daytona.ts script
-        const scriptPath = path.join(process.cwd(), "scripts", "generate-in-daytona.ts");
-        
-        // Build arguments array - pass sandboxIdArg if provided
-        const args = ["tsx", scriptPath];
-        if (sandboxIdArg) {
-          args.push(sandboxIdArg);
-        }
-        args.push(prompt);
+        // Initialize Daytona SDK to check sandbox status
+        const daytona = new Daytona({
+          apiKey: process.env.DAYTONA_API_KEY,
+        });
 
+        // Check if sandbox exists and is accessible
+        const sandboxes = await daytona.list();
+        const sandbox = sandboxes.find(s => s.id === project.sandboxId);
         
-        const child = spawn("npx", args, {
-          env: {
-            ...process.env,
-            DAYTONA_API_KEY: process.env.DAYTONA_API_KEY,
-            ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
-          },
-        });
-        
-        let currentSandboxId = sandboxIdArg || ""; // Use provided sandboxId or empty string
-        let previewUrl = "";
-        let buffer = "";
-        
-        // Capture stdout
-        child.stdout.on("data", async (data) => {
-          buffer += data.toString();
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || ""; // Keep incomplete line in buffer
-          
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            
-            // Parse Claude messages
-            if (line.includes('__CLAUDE_MESSAGE__')) {
-              const jsonStart = line.indexOf('__CLAUDE_MESSAGE__') + '__CLAUDE_MESSAGE__'.length;
-              try {
-                const message = JSON.parse(line.substring(jsonStart).trim());
-                await writer.write(
-                  encoder.encode(`data: ${JSON.stringify({ 
-                    type: "claude_message", 
-                    content: message.content 
-                  })}\n\n`)
-                );
-              } catch (e) {
-                // Ignore parse errors
-              }
-            }
-            // Parse tool uses
-            else if (line.includes('__TOOL_USE__')) {
-              const jsonStart = line.indexOf('__TOOL_USE__') + '__TOOL_USE__'.length;
-              try {
-                const toolUse = JSON.parse(line.substring(jsonStart).trim());
-                await writer.write(
-                  encoder.encode(`data: ${JSON.stringify({ 
-                    type: "tool_use", 
-                    name: toolUse.name,
-                    input: toolUse.input 
-                  })}\n\n`)
-                );
-              } catch (e) {
-                // Ignore parse errors
-              }
-            }
-            // Parse tool results
-            else if (line.includes('__TOOL_RESULT__')) {
-              // Skip tool results for now to reduce noise
-              continue;
-            }
-            // Regular progress messages
-            else {
-              const output = line.trim();
-              
-              // Filter out internal logs
-              if (output && 
-                  !output.includes('[Claude]:') && 
-                  !output.includes('[Tool]:') &&
-                  !output.includes('__')) {
-                
-                // Send as progress
-                await writer.write(
-                  encoder.encode(`data: ${JSON.stringify({ 
-                    type: "progress", 
-                    message: output 
-                  })}\n\n`)
-                );
-                
-                // Extract sandbox ID (only if we don't already have one)
-                if (!currentSandboxId) {
-                  const sandboxMatch = output.match(/Sandbox created: ([a-f0-9-]+)/);
-                  if (sandboxMatch) {
-                    currentSandboxId = sandboxMatch[1];
-                    // Send sandbox ID as soon as we get it
-                    await writer.write(
-                      encoder.encode(`data: ${JSON.stringify({ 
-                        type: "sandbox_created", 
-                        sandboxId: currentSandboxId 
-                      })}\n\n`)
-                    );
-                  }
-                }
-                
-                // Extract preview URL
-                const previewMatch = output.match(/Preview URL: (https:\/\/[^\s]+)/);
-                if (previewMatch) {
-                  previewUrl = previewMatch[1];
-                }
-              }
-            }
-          }
-        });
-        
-        // Capture stderr
-        child.stderr.on("data", async (data) => {
-          const error = data.toString();
-          console.error("[Daytona Error]:", error);
-          
-          // Only send actual errors, not debug info
-          if (error.includes("Error") || error.includes("Failed")) {
-            await writer.write(
-              encoder.encode(`data: ${JSON.stringify({ 
-                type: "error", 
-                message: error.trim() 
-              })}\n\n`)
-            );
-          }
-        });
-        
-        // Wait for process to complete
-        await new Promise((resolve, reject) => {
-          child.on("exit", (code) => {
-            if (code === 0) {
-              resolve(code);
-            } else {
-              reject(new Error(`Process exited with code ${code}`));
-            }
-          });
-          
-          child.on("error", reject);
-        });
-        
-        // Send completion with both sandbox ID and preview URL
-        const completionData = {
-          type: "complete",
-          sandboxId: currentSandboxId,
-        };
-        
-        if (previewUrl) {
-          completionData.previewUrl = previewUrl;
+        if (!sandbox) {
+          throw new Error(`Sandbox ${project.sandboxId} not found or not accessible`);
         }
-        
+
+        console.log("[AI-CHAT] Sandbox found and accessible");
+
+        // Send initial status
         await writer.write(
-          encoder.encode(`data: ${JSON.stringify(completionData)}\n\n`)
+          encoder.encode(`data: ${JSON.stringify({ 
+            type: "status", 
+            message: "Connected to project sandbox" 
+          })}\n\n`)
+        );
+
+        // Create the Claude Code modification script
+        const modificationScript = `
+const { query } = require('@anthropic-ai/claude-code');
+
+async function modifyProject() {
+  const prompt = \`${prompt.replace(/`/g, '\\`').replace(/\$/g, '\\$')}
+  
+  IMPORTANT CONTEXT:
+  - You are working in an existing Next.js project located in the /project directory
+  - The project is already set up and running - DO NOT create a new project
+  - Focus on making specific modifications, improvements, or additions to the existing codebase
+  - Use Read tool first to understand the current project structure
+  - Make targeted changes based on the user's request
+  - Ensure any changes maintain the existing project structure and don't break functionality
+  - Be surgical in your modifications - only change what's needed
+  \`;
+
+  console.log('Starting project modification with Claude Code...');
+  console.log('Working directory:', process.cwd());
+  
+  const messages = [];
+  const abortController = new AbortController();
+  
+  try {
+    for await (const message of query({
+      prompt: prompt,
+      abortController: abortController,
+      options: {
+        maxTurns: 15,
+        allowedTools: [
+          'Read',
+          'Write', 
+          'Edit',
+          'MultiEdit',
+          'Bash',
+          'LS',
+          'Glob',
+          'Grep'
+        ]
+      }
+    })) {
+      messages.push(message);
+      
+      // Log progress with structured markers for parsing
+      if (message.type === 'text') {
+        const content = message.text || '';
+        console.log('[Claude]:', content.substring(0, 100) + (content.length > 100 ? '...' : ''));
+        console.log('__CLAUDE_MESSAGE__', JSON.stringify({ 
+          type: 'assistant', 
+          content: content 
+        }));
+      } else if (message.type === 'tool_use') {
+        console.log('[Tool]:', message.name, message.input?.file_path || '');
+        console.log('__TOOL_USE__', JSON.stringify({ 
+          type: 'tool_use', 
+          name: message.name, 
+          input: message.input 
+        }));
+      } else if (message.type === 'result') {
+        // Only log successful tool results to reduce noise
+        if (!message.result?.includes('Error') && !message.result?.includes('error')) {
+          console.log('__TOOL_RESULT__', JSON.stringify({ 
+            type: 'tool_result', 
+            result: message.result?.substring(0, 200) + (message.result?.length > 200 ? '...' : '')
+          }));
+        }
+      }
+    }
+    
+    console.log('\\nModification complete!');
+    console.log('Total messages processed:', messages.length);
+    
+  } catch (error) {
+    console.error('Modification error:', error);
+    console.error('Stack:', error.stack);
+    process.exit(1);
+  }
+}
+
+modifyProject().catch(console.error);
+`;
+
+        // Send script creation status
+        await writer.write(
+          encoder.encode(`data: ${JSON.stringify({ 
+            type: "status", 
+            message: "Creating modification script..." 
+          })}\n\n`)
+        );
+
+        // Get the project directory in the sandbox
+        const projectDir = `${await sandbox.getUserRootDir()}/project`;
+        
+        // Install Claude Code SDK in the project if not present
+        await sandbox.process.executeCommand(
+          `npm list @anthropic-ai/claude-code || npm install @anthropic-ai/claude-code`,
+          projectDir
+        );
+
+        // Write the modification script to the sandbox
+        await sandbox.process.executeCommand(
+          `cat > modify-project.js << 'SCRIPT_EOF'
+${modificationScript}
+SCRIPT_EOF`,
+          projectDir
+        );
+
+        console.log("[AI-CHAT] Modification script created in sandbox");
+
+        // Send execution start status
+        await writer.write(
+          encoder.encode(`data: ${JSON.stringify({ 
+            type: "status", 
+            message: "Starting Claude Code execution..." 
+          })}\n\n`)
+        );
+
+        // Execute the modification script
+        const execResult = await sandbox.process.executeCommand(
+          "node modify-project.js",
+          projectDir,
+          {
+            ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+            NODE_PATH: `${projectDir}/node_modules`,
+          },
+          600 // 10 minute timeout
+        );
+
+        // Parse and stream the output
+        const outputLines = execResult.result.split('\n');
+        
+        for (const line of outputLines) {
+          if (!line.trim()) continue;
+          
+          // Parse Claude messages
+          if (line.includes('__CLAUDE_MESSAGE__')) {
+            const jsonStart = line.indexOf('__CLAUDE_MESSAGE__') + '__CLAUDE_MESSAGE__'.length;
+            try {
+              const message = JSON.parse(line.substring(jsonStart).trim());
+              await writer.write(
+                encoder.encode(`data: ${JSON.stringify({ 
+                  type: "claude_message", 
+                  content: message.content 
+                })}\n\n`)
+              );
+            } catch (e) {
+              // Ignore parse errors
+            }
+          }
+          // Parse tool uses
+          else if (line.includes('__TOOL_USE__')) {
+            const jsonStart = line.indexOf('__TOOL_USE__') + '__TOOL_USE__'.length;
+            try {
+              const toolUse = JSON.parse(line.substring(jsonStart).trim());
+              await writer.write(
+                encoder.encode(`data: ${JSON.stringify({ 
+                  type: "tool_use", 
+                  name: toolUse.name,
+                  input: toolUse.input 
+                })}\n\n`)
+              );
+            } catch (e) {
+              // Ignore parse errors
+            }
+          }
+          // Parse tool results
+          else if (line.includes('__TOOL_RESULT__')) {
+            const jsonStart = line.indexOf('__TOOL_RESULT__') + '__TOOL_RESULT__'.length;
+            try {
+              const toolResult = JSON.parse(line.substring(jsonStart).trim());
+              await writer.write(
+                encoder.encode(`data: ${JSON.stringify({ 
+                  type: "tool_result", 
+                  result: toolResult.result 
+                })}\n\n`)
+              );
+            } catch (e) {
+              // Ignore parse errors
+            }
+          }
+          // Regular progress messages
+          else {
+            const output = line.trim();
+            
+            // Filter out internal logs but keep meaningful progress
+            if (output && 
+                !output.includes('[Claude]:') && 
+                !output.includes('[Tool]:') &&
+                !output.includes('__') &&
+                !output.startsWith('Working directory:') &&
+                !output.startsWith('Total messages:')) {
+              
+              await writer.write(
+                encoder.encode(`data: ${JSON.stringify({ 
+                  type: "progress", 
+                  message: output 
+                })}\n\n`)
+              );
+            }
+          }
+        }
+
+        if (execResult.exitCode !== 0) {
+          throw new Error("Claude Code execution failed");
+        }
+
+        // Send completion
+        await writer.write(
+          encoder.encode(`data: ${JSON.stringify({ 
+            type: "complete",
+            message: "Project modification completed successfully!" 
+          })}\n\n`)
         );
         
-        if (previewUrl) {
-          console.log(`[API] Generation complete. Preview URL: ${previewUrl}`);
-        }
-        console.log(`[API] Sandbox ID: ${currentSandboxId}`);
+        console.log("[AI-CHAT] Modification completed successfully");
         
         // Send done signal
         await writer.write(encoder.encode("data: [DONE]\n\n"));
+        
       } catch (error) {
-        console.error("[API] Error during generation:", error);
+        console.error("[AI-CHAT] Error during modification:", error);
         await writer.write(
           encoder.encode(`data: ${JSON.stringify({ 
             type: "error", 
@@ -216,7 +320,7 @@ export async function POST(req) {
     });
     
   } catch (error) {
-    console.error("[API] Error:", error);
+    console.error("[AI-CHAT] Error:", error);
     return new Response(
       JSON.stringify({ error: error.message || "Internal server error" }),
       { status: 500, headers: { "Content-Type": "application/json" } }

@@ -18,6 +18,9 @@ export const createSandbox = async (projectName) => {
       public: true,
       image: "node:20",
       name: `curio-${projectName.toLowerCase().replace(/\s+/g, '-')}`,
+      envVars: {
+        ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY
+      },
     });
 
     const rootDir = await sandbox.getUserRootDir();
@@ -32,6 +35,19 @@ export const createSandbox = async (projectName) => {
 
     if (createNextApp.exitCode !== 0) {
       throw new Error(`Failed to create Next.js app: ${createNextApp.result}`);
+    }
+
+    // Install Claude Code SDK for AI chat functionality
+    const installClaudeCode = await sandbox.process.executeCommand(
+      `npm install @anthropic-ai/claude-code@latest`,
+      projectDir,
+      undefined,
+      180
+    );
+
+    if (installClaudeCode.exitCode !== 0) {
+      console.warn(`Warning: Failed to install Claude Code SDK: ${installClaudeCode.result}`);
+      // Don't throw error - continue with sandbox creation even if Claude Code installation fails
     }
     
     await sandbox.process.executeCommand(
@@ -183,6 +199,7 @@ export const SANDBOX_CREATION_STEPS = [
   { id: 'creating', label: 'Creating Daytona sandbox...' },
   { id: 'setup', label: 'Setting up Next.js project...' },
   { id: 'installing', label: 'Installing dependencies...' },
+  { id: 'claude-code', label: 'Installing Claude Code SDK...' },
   { id: 'starting', label: 'Starting development server...' },
   { id: 'complete', label: 'Sandbox ready!' }
 ];
