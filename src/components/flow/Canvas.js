@@ -44,6 +44,19 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
           }
         };
       }
+      // Update AI chat nodes with project context
+      if (node.type === 'aichatNode') {
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            projectId: project.id,
+            projectName: project.title,
+            sandboxId: project.sandboxId,
+            sandboxStatus: sandboxStatus
+          }
+        };
+      }
       return node;
     });
   }, [project, previewUrl, sandboxStatus]);
