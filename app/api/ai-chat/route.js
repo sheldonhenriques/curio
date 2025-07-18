@@ -1,8 +1,10 @@
 import { Daytona } from "@daytonaio/sdk";
+import connectToDatabase from '@/lib/mongodb';
+import ChatSession from '@/models/ChatSession';
 
 export async function POST(req) {
   try {
-    const { prompt, projectId } = await req.json();
+    const { prompt, projectId, nodeId, sessionId } = await req.json();
     
     if (!prompt) {
       return new Response(
@@ -17,6 +19,13 @@ export async function POST(req) {
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
+
+    if (!nodeId) {
+      return new Response(
+        JSON.stringify({ error: "Node ID is required" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
     
     if (!process.env.DAYTONA_API_KEY || !process.env.ANTHROPIC_API_KEY) {
       return new Response(
@@ -26,7 +35,12 @@ export async function POST(req) {
     }
 
     console.log("[AI-CHAT] Processing request for project:", projectId);
+    console.log("[AI-CHAT] Node ID:", nodeId);
+    console.log("[AI-CHAT] Session ID:", sessionId);
     console.log("[AI-CHAT] User prompt:", prompt);
+    
+    // Connect to database
+    await connectToDatabase();
     
     // Get project data to retrieve sandbox ID
     const projectResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/projects/${projectId}`);
@@ -77,199 +91,117 @@ export async function POST(req) {
             message: "Connected to project sandbox" 
           })}\n\n`)
         );
-
-        // Create the Claude Code modification script
-        const modificationScript = `
-const { query } = require('@anthropic-ai/claude-code');
-
-async function modifyProject() {
-  const prompt = \`${prompt.replace(/`/g, '\\`').replace(/\$/g, '\\$')}
-  
-  IMPORTANT CONTEXT:
-  - You are working in an existing Next.js project located in the /project directory
-  - The project is already set up and running - DO NOT create a new project
-  - Focus on making specific modifications, improvements, or additions to the existing codebase
-  - Use Read tool first to understand the current project structure
-  - Make targeted changes based on the user's request
-  - Ensure any changes maintain the existing project structure and don't break functionality
-  - Be surgical in your modifications - only change what's needed
-  \`;
-
-  console.log('Starting project modification with Claude Code...');
-  console.log('Working directory:', process.cwd());
-  
-  const messages = [];
-  const abortController = new AbortController();
-  
-  try {
-    for await (const message of query({
-      prompt: prompt,
-      abortController: abortController,
-      options: {
-        maxTurns: 15,
-        allowedTools: [
-          'Read',
-          'Write', 
-          'Edit',
-          'MultiEdit',
-          'Bash',
-          'LS',
-          'Glob',
-          'Grep'
-        ]
-      }
-    })) {
-      messages.push(message);
-      
-      // Log progress with structured markers for parsing
-      if (message.type === 'text') {
-        const content = message.text || '';
-        console.log('[Claude]:', content.substring(0, 100) + (content.length > 100 ? '...' : ''));
-        console.log('__CLAUDE_MESSAGE__', JSON.stringify({ 
-          type: 'assistant', 
-          content: content 
-        }));
-      } else if (message.type === 'tool_use') {
-        console.log('[Tool]:', message.name, message.input?.file_path || '');
-        console.log('__TOOL_USE__', JSON.stringify({ 
-          type: 'tool_use', 
-          name: message.name, 
-          input: message.input 
-        }));
-      } else if (message.type === 'result') {
-        // Only log successful tool results to reduce noise
-        if (!message.result?.includes('Error') && !message.result?.includes('error')) {
-          console.log('__TOOL_RESULT__', JSON.stringify({ 
-            type: 'tool_result', 
-            result: message.result?.substring(0, 200) + (message.result?.length > 200 ? '...' : '')
-          }));
+        
+        // Load or create session
+        let currentSession = null;
+        if (sessionId) {
+          currentSession = await ChatSession.findOne({ sessionId, nodeId, isActive: true });
+          if (!currentSession) {
+            console.log("[AI-CHAT] Session not found, creating new session");
+          }
         }
-      }
-    }
-    
-    console.log('\\nModification complete!');
-    console.log('Total messages processed:', messages.length);
-    
-  } catch (error) {
-    console.error('Modification error:', error);
-    console.error('Stack:', error.stack);
-    process.exit(1);
-  }
-}
+        
+        // Store user message
+        const userMessageId = new Date().getTime().toString();
+        if (currentSession) {
+          await currentSession.addMessage('user', prompt, { timestamp: new Date() });
+        }
 
-modifyProject().catch(console.error);
-`;
+        // Prepare Claude Code CLI command
+        const contextPrompt = `${prompt}
 
-        // Send script creation status
+IMPORTANT CONTEXT:
+- You are working in an existing Next.js project located in the /project directory
+- The project is already set up and running - DO NOT create a new project
+- Focus on making specific modifications, improvements, or additions to the existing codebase
+- Use Read tool first to understand the current project structure
+- Make targeted changes based on the user's request
+- Ensure any changes maintain the existing project structure and don't break functionality
+- Be surgical in your modifications - only change what's needed`;
+        
+        // Build Claude Code CLI command
+        let claudeCommand;
+        if (sessionId && currentSession) {
+          claudeCommand = `claude -p --resume ${sessionId} --output-format json "${contextPrompt.replace(/"/g, '\\"')}"`;
+        } else {
+          claudeCommand = `claude -p --output-format json "${contextPrompt.replace(/"/g, '\\"')}"`;
+        }
+
+        // Send execution start status
         await writer.write(
           encoder.encode(`data: ${JSON.stringify({ 
             type: "status", 
-            message: "Creating modification script..." 
+            message: currentSession ? "Resuming conversation..." : "Starting new conversation..." 
           })}\n\n`)
         );
 
         // Get the project directory in the sandbox
         const projectDir = `${await sandbox.getUserRootDir()}/project`;
         
-        // Install Claude Code SDK in the project if not present
-        await sandbox.process.executeCommand(
-          `npm list @anthropic-ai/claude-code || npm install @anthropic-ai/claude-code`,
-          projectDir
-        );
+        console.log("[AI-CHAT] Executing Claude Code CLI command:", claudeCommand);
 
-        // Write the modification script to the sandbox
-        await sandbox.process.executeCommand(
-          `cat > modify-project.js << 'SCRIPT_EOF'
-${modificationScript}
-SCRIPT_EOF`,
-          projectDir
-        );
-
-        console.log("[AI-CHAT] Modification script created in sandbox");
-
-        // Send execution start status
-        await writer.write(
-          encoder.encode(`data: ${JSON.stringify({ 
-            type: "status", 
-            message: "Starting Claude Code execution..." 
-          })}\n\n`)
-        );
-
-        // Execute the modification script
+        // Execute Claude Code CLI
         const execResult = await sandbox.process.executeCommand(
-          "node modify-project.js",
+          claudeCommand,
           projectDir,
           {
             ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
-            NODE_PATH: `${projectDir}/node_modules`,
           },
           600 // 10 minute timeout
         );
 
-        // Parse and stream the output
-        const outputLines = execResult.result.split('\n');
+        // Parse Claude Code CLI JSON output
+        let extractedSessionId = null;
+        const messages = [];
         
-        for (const line of outputLines) {
-          if (!line.trim()) continue;
+        try {
+          // Try to parse as JSON first
+          const jsonOutput = JSON.parse(execResult.result);
           
-          // Parse Claude messages
-          if (line.includes('__CLAUDE_MESSAGE__')) {
-            const jsonStart = line.indexOf('__CLAUDE_MESSAGE__') + '__CLAUDE_MESSAGE__'.length;
-            try {
-              const message = JSON.parse(line.substring(jsonStart).trim());
-              await writer.write(
-                encoder.encode(`data: ${JSON.stringify({ 
-                  type: "claude_message", 
-                  content: message.content 
-                })}\n\n`)
-              );
-            } catch (e) {
-              // Ignore parse errors
-            }
+          // Extract session ID if present
+          if (jsonOutput.session_id) {
+            extractedSessionId = jsonOutput.session_id;
           }
-          // Parse tool uses
-          else if (line.includes('__TOOL_USE__')) {
-            const jsonStart = line.indexOf('__TOOL_USE__') + '__TOOL_USE__'.length;
-            try {
-              const toolUse = JSON.parse(line.substring(jsonStart).trim());
-              await writer.write(
-                encoder.encode(`data: ${JSON.stringify({ 
-                  type: "tool_use", 
-                  name: toolUse.name,
-                  input: toolUse.input 
-                })}\n\n`)
-              );
-            } catch (e) {
-              // Ignore parse errors
-            }
-          }
-          // Parse tool results
-          else if (line.includes('__TOOL_RESULT__')) {
-            const jsonStart = line.indexOf('__TOOL_RESULT__') + '__TOOL_RESULT__'.length;
-            try {
-              const toolResult = JSON.parse(line.substring(jsonStart).trim());
-              await writer.write(
-                encoder.encode(`data: ${JSON.stringify({ 
-                  type: "tool_result", 
-                  result: toolResult.result 
-                })}\n\n`)
-              );
-            } catch (e) {
-              // Ignore parse errors
-            }
-          }
-          // Regular progress messages
-          else {
-            const output = line.trim();
-            
-            // Filter out internal logs but keep meaningful progress
-            if (output && 
-                !output.includes('[Claude]:') && 
-                !output.includes('[Tool]:') &&
-                !output.includes('__') &&
-                !output.startsWith('Working directory:') &&
-                !output.startsWith('Total messages:')) {
+          
+          // Process messages array
+          if (jsonOutput.messages && Array.isArray(jsonOutput.messages)) {
+            for (const msg of jsonOutput.messages) {
+              messages.push(msg);
               
+              // Stream different message types
+              if (msg.type === 'text') {
+                await writer.write(
+                  encoder.encode(`data: ${JSON.stringify({ 
+                    type: "claude_message", 
+                    content: msg.text || msg.content 
+                  })}\n\n`)
+                );
+              } else if (msg.type === 'tool_use') {
+                await writer.write(
+                  encoder.encode(`data: ${JSON.stringify({ 
+                    type: "tool_use", 
+                    name: msg.name,
+                    input: msg.input 
+                  })}\n\n`)
+                );
+              } else if (msg.type === 'tool_result') {
+                await writer.write(
+                  encoder.encode(`data: ${JSON.stringify({ 
+                    type: "tool_result", 
+                    result: msg.result 
+                  })}\n\n`)
+                );
+              }
+            }
+          }
+        } catch (parseError) {
+          // If not valid JSON, treat as plain text output
+          console.log("[AI-CHAT] Non-JSON output, parsing as text");
+          
+          const outputLines = execResult.result.split('\n');
+          for (const line of outputLines) {
+            const output = line.trim();
+            if (output) {
               await writer.write(
                 encoder.encode(`data: ${JSON.stringify({ 
                   type: "progress", 
@@ -282,6 +214,55 @@ SCRIPT_EOF`,
 
         if (execResult.exitCode !== 0) {
           throw new Error("Claude Code execution failed");
+        }
+
+        // Create or update session in database
+        if (extractedSessionId) {
+          if (!currentSession) {
+            // Create new session
+            currentSession = new ChatSession({
+              sessionId: extractedSessionId,
+              nodeId,
+              projectId,
+              messages: [],
+              isActive: true
+            });
+            await currentSession.save();
+            console.log("[AI-CHAT] Created new session:", extractedSessionId);
+          } else {
+            // Update existing session
+            currentSession.sessionId = extractedSessionId;
+            await currentSession.save();
+          }
+          
+          // Store all messages in database
+          for (const msg of messages) {
+            if (msg.type === 'text') {
+              await currentSession.addMessage('assistant', msg.text || msg.content, { 
+                timestamp: new Date(),
+                messageType: 'text' 
+              });
+            } else if (msg.type === 'tool_use') {
+              await currentSession.addMessage('tool_use', JSON.stringify(msg), { 
+                timestamp: new Date(),
+                toolName: msg.name,
+                toolInput: msg.input 
+              });
+            } else if (msg.type === 'tool_result') {
+              await currentSession.addMessage('tool_result', msg.result, { 
+                timestamp: new Date(),
+                messageType: 'tool_result' 
+              });
+            }
+          }
+          
+          // Send session ID to client
+          await writer.write(
+            encoder.encode(`data: ${JSON.stringify({ 
+              type: "session_id",
+              sessionId: extractedSessionId 
+            })}\n\n`)
+          );
         }
 
         // Send completion
@@ -299,6 +280,15 @@ SCRIPT_EOF`,
         
       } catch (error) {
         console.error("[AI-CHAT] Error during modification:", error);
+        
+        // Store error in session if available
+        if (currentSession) {
+          await currentSession.addMessage('error', error.message, { 
+            timestamp: new Date(),
+            errorType: 'execution_error' 
+          });
+        }
+        
         await writer.write(
           encoder.encode(`data: ${JSON.stringify({ 
             type: "error", 

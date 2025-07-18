@@ -6,6 +6,9 @@ const { Daytona } = require('@daytonaio/sdk');
 const { v4: uuidv4 } = require('uuid');
 // Note: Using Daytona SDK's executeCommand instead of spawn for better sandbox integration
 
+// Import session cleanup service (will be lazy loaded when needed)
+let sessionCleanupService = null;
+
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = 'localhost';
 const port = process.env.PORT || 3000;
@@ -15,6 +18,9 @@ const handle = app.getRequestHandler();
 
 // Store active chat sessions
 const chatSessions = new Map();
+
+// Store incomplete JSON buffers for each WebSocket connection
+const jsonBuffers = new Map();
 
 app.prepare().then(() => {
   const server = createServer(async (req, res) => {
@@ -35,6 +41,11 @@ app.prepare().then(() => {
   });
 
   wss.on('connection', (ws, req) => {
+    // Initialize JSON buffer for this connection
+    const connectionId = uuidv4();
+    ws.connectionId = connectionId;
+    jsonBuffers.set(connectionId, '');
+
     // Send initial connection confirmation
     safeSend(ws, {
       type: 'connection',
@@ -57,7 +68,7 @@ app.prepare().then(() => {
       // Connection closed - cleanup will happen automatically
     });
 
-    ws.on('error', (error) => {
+    ws.on('error', () => {
       // WebSocket error - connection will be closed
     });
 
@@ -72,6 +83,10 @@ app.prepare().then(() => {
 
     ws.on('close', () => {
       clearInterval(pingInterval);
+      // Clean up JSON buffer for this connection
+      if (ws.connectionId) {
+        jsonBuffers.delete(ws.connectionId);
+      }
     });
   });
 
@@ -127,13 +142,28 @@ app.prepare().then(() => {
         throw new Error('Sandbox not found or not accessible. Please refresh the page.');
       }
 
-      // Generate or use existing session UUID
+      // Check for existing Claude session in database first
+      let claudeSessionId = null;
+      try {
+        const response = await fetch(`http://localhost:${port}/api/chat-sessions/${nodeId}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.session && data.session.sessionId) {
+            claudeSessionId = data.session.sessionId;
+            console.log(`[Chat] Using existing Claude session: ${claudeSessionId}`);
+          }
+        }
+      } catch (error) {
+        console.log('[Chat] No existing session found, will create new one');
+      }
+
+      // Generate session key for this WebSocket session (different from Claude session)
       const sessionKey = sessionId || uuidv4();
       
       // Get project directory
       const projectDir = `${await sandbox.getUserRootDir()}/project`;
 
-      await executeClaudeCLI(ws, prompt, sessionKey, sandbox, projectDir);
+      await executeClaudeCLI(ws, prompt, sessionKey, sandbox, projectDir, claudeSessionId);
 
       // Update session activity
       chatSessions.set(sessionKey, {
@@ -160,7 +190,7 @@ app.prepare().then(() => {
     }
   }
 
-  async function executeClaudeCLI(ws, prompt, sessionKey, sandbox, projectDir) {
+  async function executeClaudeCLI(ws, prompt, sessionKey, sandbox, projectDir, claudeSessionId) {
     return new Promise(async (resolve, reject) => {
       // Prepare the enhanced prompt with context
       const enhancedPrompt = `${prompt}
@@ -190,9 +220,17 @@ IMPORTANT CONTEXT:
         await sandbox.process.createSession(streamSessionId);
         
         // Step 3: Execute Claude CLI with session streaming
-        const claudeCommand = `cd "${projectDir}" && cat "${promptFile}" | claude --print --output-format stream-json --verbose --max-turns 15 --allowedTools "Edit,Write,MultiEdit,Read,Bash,Glob,Grep"`;
+        let claudeCommand;
+        if (claudeSessionId) {
+          // Use existing Claude session for conversation continuity
+          claudeCommand = `cd "${projectDir}" && cat "${promptFile}" | claude -r ${claudeSessionId} --print --output-format stream-json --verbose --max-turns 15 --allowedTools "Edit,Write,MultiEdit,Read,Bash,Glob,Grep"`;
+        } else {
+          // No existing session - make normal call (Claude will generate new session ID)
+          claudeCommand = `cd "${projectDir}" && cat "${promptFile}" | claude --print --output-format stream-json --verbose --max-turns 15 --allowedTools "Edit,Write,MultiEdit,Read,Bash,Glob,Grep"`;
+        }
 
         // Execute command and stream output
+        console.log(`[Chat] Executing full Claude command:`, claudeCommand);
         const sessionCommand = await sandbox.process.executeSessionCommand(streamSessionId, {
           command: claudeCommand,
           runAsync: true,
@@ -202,15 +240,40 @@ IMPORTANT CONTEXT:
         });
 
         const cmdId = sessionCommand.cmdId;
+        console.log(`[Chat] Claude command started with cmdId: ${cmdId}`);
 
-        // Stream the output in real-time
-        await sandbox.process.getSessionCommandLogs(streamSessionId, cmdId, (chunk) => {
-          if (chunk && chunk.trim()) {
-            // Parse and send the chunk immediately
-            // Completion detection happens in parseClaudeStreamChunk
-            parseClaudeStreamChunk(ws, chunk);
-          }
-        });
+        // Stream the output in real-time with timeout
+        try {
+          let outputReceived = false;
+          const streamTimeout = setTimeout(() => {
+            if (!outputReceived) {
+              console.log(`[Chat] No output received after 30s for cmdId: ${cmdId}`);
+              safeSend(ws, {
+                type: 'error', 
+                message: 'Claude command timed out - no output received'
+              });
+            }
+          }, 30000);
+
+          await sandbox.process.getSessionCommandLogs(streamSessionId, cmdId, (chunk) => {
+            if (chunk && chunk.trim()) {
+              outputReceived = true;
+              clearTimeout(streamTimeout);
+              console.log(`[Chat] Received output chunk for cmdId: ${cmdId}, content:`, chunk.substring(0, 300));
+              // Parse and send the chunk immediately with buffering
+              // Completion detection happens in parseClaudeStreamChunk
+              parseClaudeStreamChunkWithBuffering(ws, chunk);
+            }
+          });
+          console.log(`[Chat] Claude command completed for cmdId: ${cmdId}`);
+          clearTimeout(streamTimeout);
+        } catch (streamError) {
+          console.error(`[Chat] Streaming error for cmdId ${cmdId}:`, streamError);
+          safeSend(ws, {
+            type: 'error',
+            message: `Streaming error: ${streamError.message}`
+          });
+        }
         
         // Send completion signal after streaming ends
         safeSend(ws, {
@@ -238,144 +301,136 @@ IMPORTANT CONTEXT:
     });
   }
 
-  function parseClaudeStreamChunk(ws, chunk) {
-    if (!chunk || !chunk.trim()) {
+  function parseClaudeStreamChunkWithBuffering(ws, chunk) {
+    if (!chunk || !ws.connectionId) {
       return;
     }
     
-    // Split chunk into lines and process each line that could be JSON
-    const lines = chunk.split('\n');
+    // Get the current buffer for this connection
+    let buffer = jsonBuffers.get(ws.connectionId) || '';
     
-    for (const line of lines) {
-      if (!line.trim()) continue;
+    // Add new chunk to buffer
+    buffer += chunk;
+    
+    // Try to extract complete JSON objects from the buffer
+    let processed = '';
+    let currentPos = 0;
+    
+    while (currentPos < buffer.length) {
+      // Find the start of a potential JSON object
+      const startPos = buffer.indexOf('{', currentPos);
+      if (startPos === -1) {
+        // No more JSON objects to process
+        break;
+      }
       
-      try {
-        // Try to parse as JSON (Claude CLI stream-json format)
-        if (line.startsWith('{') && line.endsWith('}')) {
-          const claudeMessage = JSON.parse(line);
-          
-          // Skip init messages and system setup messages
-          if (claudeMessage.type === 'system' && claudeMessage.subtype === 'init') {
-            return; // Don't send init messages
-          }
-          
-          // Check for completion/final messages
-          if (claudeMessage.type === 'result' || 
-              claudeMessage.type === 'system' && claudeMessage.subtype === 'session_end' ||
-              claudeMessage.type === 'final') {
-            // Send completion signal when Claude is done (just to stop loading, no bubble)
-            safeSend(ws, {
-              type: 'complete',
-              message: '' // Empty message - we just want to stop the thinking bubble
-            });
-            return;
-          }
-          
-          // Send each JSON message as a separate bubble (this handles all message types)
-          safeSend(ws, {
-            type: 'json_message',
-            data: claudeMessage,
-            timestamp: Date.now()
-          });
-          
-          // Extract and send session ID updates
-          if (claudeMessage.session_id) {
-            safeSend(ws, {
-              type: 'session_update',
-              sessionId: claudeMessage.session_id
-            });
-          }
-        }
-        // Handle non-JSON text output - skip since we only want JSON messages now
-        // All meaningful content should come through as JSON from Claude CLI
-      } catch (parseError) {
-        // Skip invalid JSON - we only want clean output
-      }
-    }
-  }
-
-  // Clean and format message content for better display
-  function cleanMessageContent(content) {
-    if (!content || !content.trim()) {
-      return null;
-    }
-
-    // Remove [object Object] occurrences
-    content = content.replace(/\[object Object\]/g, '');
-    
-    // Remove excessive whitespace and empty lines
-    content = content.replace(/\s+/g, ' ').trim();
-    
-    // Skip if content is just symbols or very short
-    if (content.length < 3 || /^[^\w\s]*$/.test(content)) {
-      return null;
-    }
-    
-    // Skip system/debug messages we don't want to show
-    const skipPatterns = [
-      'Working directory:',
-      'curl:',
-      'npm',
-      'Error:',
-      'warning:',
-      /^\[.*\]/,  // Skip bracketed log messages
-      'claude-code',
-      'Checking for updates',
-      'Installing',
-      'node_modules'
-    ];
-    
-    for (const pattern of skipPatterns) {
-      if (typeof pattern === 'string' && content.includes(pattern)) {
-        return null;
-      } else if (pattern instanceof RegExp && pattern.test(content)) {
-        return null;
-      }
-    }
-    
-    // Only show thinking messages and important responses
-    if (content.includes('Let me') || 
-        content.includes('I\'ll') || 
-        content.includes('First, I\'ll') ||
-        content.includes('I need to') ||
-        content.includes('Looking at') ||
-        content.includes('Based on')) {
-      return `💭 ${content}`;
-    }
-    
-    return null; // By default, don't show non-JSON text
-  }
-
-  // Convert Claude CLI JSON message format to our display format (simplified)
-  function convertClaudeMessage(claudeMessage) {
-    // Handle thinking messages - these are important to show
-    if (claudeMessage.type === 'thinking') {
-      return {
-        type: 'thinking',
-        content: claudeMessage.thinking || claudeMessage.content || '',
-        display: '💭 Thinking...'
-      };
-    }
-    
-    // Handle assistant messages - main responses
-    if (claudeMessage.type === 'assistant' && claudeMessage.message) {
-      if (claudeMessage.message.content) {
-        const textContent = claudeMessage.message.content
-          .filter(block => block.type === 'text')
-          .map(block => block.text)
-          .join('');
+      // Try to find the matching closing brace
+      let braceCount = 0;
+      let endPos = -1;
+      let inString = false;
+      let escapeNext = false;
+      
+      for (let i = startPos; i < buffer.length; i++) {
+        const char = buffer[i];
         
-        if (textContent.trim()) {
-          return {
-            type: 'claude_message',
-            content: textContent
-          };
+        if (escapeNext) {
+          escapeNext = false;
+          continue;
         }
+        
+        if (char === '\\' && inString) {
+          escapeNext = true;
+          continue;
+        }
+        
+        if (char === '"' && !escapeNext) {
+          inString = !inString;
+          continue;
+        }
+        
+        if (!inString) {
+          if (char === '{') {
+            braceCount++;
+          } else if (char === '}') {
+            braceCount--;
+            if (braceCount === 0) {
+              endPos = i;
+              break;
+            }
+          }
+        }
+      }
+      
+      if (endPos !== -1) {
+        // Found complete JSON object
+        const jsonStr = buffer.substring(startPos, endPos + 1);
+        processed += buffer.substring(currentPos, endPos + 1);
+        currentPos = endPos + 1;
+        
+        try {
+          const claudeMessage = JSON.parse(jsonStr);
+          processClaudeMessage(ws, claudeMessage);
+        } catch (parseError) {
+          console.error('[Chat] Failed to parse complete JSON:', parseError.message);
+          console.error('[Chat] Problematic JSON:', jsonStr.substring(0, 200));
+        }
+      } else {
+        // Incomplete JSON object, stop processing and keep in buffer
+        break;
       }
     }
     
-    return null; // Skip all other message types - they will be shown as raw JSON
+    // Update buffer with remaining unprocessed content
+    const remainingBuffer = buffer.substring(currentPos);
+    jsonBuffers.set(ws.connectionId, remainingBuffer);
+    
+    // If buffer gets too large (> 100KB), clear it to prevent memory issues
+    if (remainingBuffer.length > 100000) {
+      console.warn('[Chat] JSON buffer too large, clearing for connection:', ws.connectionId);
+      jsonBuffers.set(ws.connectionId, '');
+    }
   }
+
+  function processClaudeMessage(ws, claudeMessage) {
+    // Skip init messages and system setup messages
+    if (claudeMessage.type === 'system' && claudeMessage.subtype === 'init') {
+      return; // Don't send init messages
+    }
+    
+    // Check for completion/final messages
+    if (claudeMessage.type === 'result') {
+      // Send completion signal when Claude is done (just to stop loading, no bubble)
+      safeSend(ws, {
+        type: 'complete',
+        message: claudeMessage.result || '' // Send the result message if available
+      });
+      return;
+    }
+    
+    if (claudeMessage.type === 'system' && claudeMessage.subtype === 'session_end') {
+      safeSend(ws, {
+        type: 'complete',
+        message: ''
+      });
+      return;
+    }
+    
+    // Send each JSON message as a separate bubble (this handles all message types)
+    safeSend(ws, {
+      type: 'json_message',
+      data: claudeMessage,
+      timestamp: Date.now()
+    });
+    
+    // Extract and send session ID updates
+    if (claudeMessage.session_id) {
+      safeSend(ws, {
+        type: 'session_update',
+        sessionId: claudeMessage.session_id
+      });
+    }
+  }
+
 
   // Clean up old sessions periodically
   setInterval(() => {
@@ -394,8 +449,34 @@ IMPORTANT CONTEXT:
     process.exit(1);
   });
 
-  server.listen(port, () => {
+  server.listen(port, async () => {
     console.log(`> Ready on http://${hostname}:${port}`);
     console.log(`> WebSocket endpoint: ws://${hostname}:${port}/api/claude-ws`);
+    
+    // Start session cleanup service
+    try {
+      const { default: cleanup } = await import('./src/lib/sessionCleanup.js');
+      sessionCleanupService = cleanup;
+      sessionCleanupService.start();
+    } catch (error) {
+      console.error('Failed to start session cleanup service:', error);
+    }
+  });
+  
+  // Graceful shutdown
+  process.on('SIGINT', () => {
+    console.log('\nShutting down server...');
+    if (sessionCleanupService) {
+      sessionCleanupService.stop();
+    }
+    process.exit(0);
+  });
+  
+  process.on('SIGTERM', () => {
+    console.log('\nShutting down server...');
+    if (sessionCleanupService) {
+      sessionCleanupService.stop();
+    }
+    process.exit(0);
   });
 });
