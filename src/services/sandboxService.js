@@ -39,10 +39,10 @@ export const createSandbox = async (projectName) => {
 
     // Install Claude Code SDK for AI chat functionality
     const installClaudeCode = await sandbox.process.executeCommand(
-      `npm install @anthropic-ai/claude-code@latest`,
+      `npm install -g @anthropic-ai/claude-code@latest`,
       projectDir,
       undefined,
-      180
+      240
     );
 
     if (installClaudeCode.exitCode !== 0) {

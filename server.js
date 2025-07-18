@@ -212,6 +212,12 @@ IMPORTANT CONTEXT:
           }
         });
         
+        // Send completion signal after streaming ends
+        safeSend(ws, {
+          type: 'complete',
+          message: ''
+        });
+        
         // Clean up session and prompt file
         await sandbox.process.deleteSession(streamSessionId).catch(() => {});
         await sandbox.process.executeCommand(`rm -f "${promptFile}"`, projectDir).catch(() => {});
