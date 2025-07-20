@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inspector Test Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        .test-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-element {
+            padding: 10px;
+            background: #e3f2fd;
+            border: 2px solid #2196f3;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .highlighted {
+            background: #ffeb3b !important;
+            border-color: #ff9800 !important;
+        }
+        #debug-log {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            width: 300px;
+            max-height: 400px;
+            background: #333;
+            color: #0f0;
+            font-family: monospace;
+            font-size: 12px;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-y: auto;
+            z-index: 10000;
+        }
+    </style>
+</head>
+<body>
+    <div id="debug-log"></div>
+    
+    <h1>Inspector Test Page</h1>
+    
+    <div class="test-container">
+        <h2 id="test-heading">Test Heading</h2>
+        <p class="test-element">This is a test paragraph with classes.</p>
+        <div class="test-element" id="unique-div">This div has both ID and classes.</div>
+        <button class="test-element">Click me!</button>
+    </div>
+
+    <div class="test-container">
+        <h3>Tailwind-style Classes</h3>
+        <div class="bg-blue-500 text-white p-4 rounded-lg mb-4">Blue box with Tailwind classes</div>
+        <div class="bg-red-500 text-white p-2 rounded">Red box</div>
+    </div>
+
+    <script>
+        const debugLog = document.getElementById('debug-log');
+        
+        function log(message, data = null) {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.innerHTML = `[${timestamp}] ${message}`;
+            if (data) {
+                logEntry.innerHTML += `<br><pre>${JSON.stringify(data, null, 2)}</pre>`;
+            }
+            debugLog.appendChild(logEntry);
+            debugLog.scrollTop = debugLog.scrollHeight;
+            console.log('[TEST]', message, data);
+        }
+
+        // Test 1: Check if we're in iframe
+        log('Page loaded in iframe:', window !== window.parent);
+        log('Window origin:', window.location.origin);
+        log('Parent origin:', window.parent.location.origin);
+
+        // Test 2: Listen for injection messages
+        window.addEventListener('message', (event) => {
+            log('Received message:', {
+                type: event.data.type,
+                origin: event.origin,
+                source: event.source === window.parent ? 'parent' : 'other'
+            });
+
+            if (event.data.type === 'CURIO_INJECT_INSPECTOR') {
+                log('Inspector injection message received!');
+                
+                try {
+                    // Execute the inspector script
+                    const script = document.createElement('script');
+                    script.textContent = event.data.script;
+                    document.head.appendChild(script);
+                    
+                    // Send success response
+                    window.parent.postMessage({
+                        type: 'CURIO_INJECTION_SUCCESS',
+                        timestamp: Date.now()
+                    }, '*');
+                    
+                    log('Inspector script injected successfully');
+                    
+                    // Test inspector functionality
+                    setTimeout(() => {
+                        if (window.__CURIO_INSPECTOR__) {
+                            log('Inspector instance found:', {
+                                isInitialized: window.__CURIO_INSPECTOR__.isInitialized,
+                                isEnabled: window.__CURIO_INSPECTOR__.isEnabled
+                            });
+                        } else {
+                            log('ERROR: Inspector instance not found!');
+                        }
+                    }, 1000);
+                    
+                } catch (error) {
+                    log('ERROR injecting script:', error.message);
+                    window.parent.postMessage({
+                        type: 'CURIO_INJECTION_ERROR',
+                        error: error.message
+                    }, '*');
+                }
+            }
+        });
+
+        // Test 3: Manual inspector test
+        function testInspector() {
+            if (!window.__CURIO_INSPECTOR__) {
+                log('ERROR: Inspector not found for manual test');
+                return;
+            }
+
+            const inspector = window.__CURIO_INSPECTOR__;
+            
+            log('Manual inspector test started');
+            log('Inspector state:', {
+                isInitialized: inspector.isInitialized,
+                isEnabled: inspector.isEnabled
+            });
+
+            // Test enable/disable
+            inspector.enable();
+            log('Inspector enabled');
+
+            // Test element selection
+            const testElement = document.querySelector('.test-element');
+            if (testElement) {
+                inspector.selectElement(testElement);
+                log('Test element selected');
+            }
+
+            // Test highlighting
+            inspector.highlightElement(testElement);
+            log('Test element highlighted');
+        }
+
+        // Test 4: Add test buttons
+        const testContainer = document.createElement('div');
+        testContainer.innerHTML = `
+            <div style="position: fixed; bottom: 10px; left: 10px; z-index: 10000;">
+                <button onclick="testInspector()">Test Inspector</button>
+                <button onclick="debugLog.innerHTML = ''">Clear Log</button>
+                <button onclick="window.__CURIO_INSPECTOR__ && window.__CURIO_INSPECTOR__.enable()">Enable Inspector</button>
+                <button onclick="window.__CURIO_INSPECTOR__ && window.__CURIO_INSPECTOR__.disable()">Disable Inspector</button>
+            </div>
+        `;
+        document.body.appendChild(testContainer);
+
+        log('Test page initialized');
+        log('Waiting for inspector injection...');
+    </script>
+</body>
+</html>

@@ -43,3 +43,12 @@ async function connectToDatabase() {
 }
 
 export default connectToDatabase;
+
+/**
+ * Get project by ID
+ */
+export async function getProjectById(id) {
+  await connectToDatabase();
+  const Project = (await import('@/models/Project')).default;
+  return await Project.findOne({ id: parseInt(id) });
+}

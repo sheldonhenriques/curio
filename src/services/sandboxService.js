@@ -209,3 +209,147 @@ export const SANDBOX_STARTUP_STEPS = [
   { id: 'server', label: 'Starting development server...' },
   { id: 'complete', label: 'Sandbox ready!' }
 ];
+
+/**
+ * Read file from sandbox
+ */
+export const readSandboxFile = async (sandboxId, filePath) => {
+  const daytona = getDaytonaClient();
+  
+  try {
+    const sandboxes = await daytona.list();
+    const sandbox = sandboxes.find(s => s.id === sandboxId);
+    
+    if (!sandbox) {
+      throw new Error(`Sandbox ${sandboxId} not found`);
+    }
+
+    // Get the root directory and construct full path
+    const rootDir = await sandbox.getUserRootDir();
+    const projectDir = `${rootDir}/project`;
+    const fullPath = filePath.startsWith('/') ? filePath : `${projectDir}/${filePath}`;
+
+    // Use cat command to read file contents
+    const result = await sandbox.process.executeCommand(
+      `cat "${fullPath}"`,
+      projectDir
+    );
+
+    if (result.exitCode !== 0) {
+      throw new Error(`Failed to read file: ${result.result}`);
+    }
+
+    return result.result;
+
+  } catch (error) {
+    console.error("Error reading file from sandbox:", error);
+    throw error;
+  }
+};
+
+/**
+ * Write file to sandbox
+ */
+export const writeSandboxFile = async (sandboxId, filePath, content) => {
+  const daytona = getDaytonaClient();
+  
+  try {
+    const sandboxes = await daytona.list();
+    const sandbox = sandboxes.find(s => s.id === sandboxId);
+    
+    if (!sandbox) {
+      throw new Error(`Sandbox ${sandboxId} not found`);
+    }
+
+    // Get the root directory and construct full path
+    const rootDir = await sandbox.getUserRootDir();
+    const projectDir = `${rootDir}/project`;
+    const fullPath = filePath.startsWith('/') ? filePath : `${projectDir}/${filePath}`;
+
+    // Create directory if it doesn't exist
+    const dirPath = fullPath.substring(0, fullPath.lastIndexOf('/'));
+    await sandbox.process.executeCommand(
+      `mkdir -p "${dirPath}"`,
+      projectDir
+    );
+
+    // Write content to file using tee command to handle special characters
+    const writeResult = await sandbox.process.executeCommand(
+      `cat > "${fullPath}"`,
+      projectDir,
+      undefined,
+      undefined,
+      content
+    );
+
+    if (writeResult.exitCode !== 0) {
+      throw new Error(`Failed to write file: ${writeResult.result}`);
+    }
+
+    return true;
+
+  } catch (error) {
+    console.error("Error writing file to sandbox:", error);
+    throw error;
+  }
+};
+
+/**
+ * List files in sandbox directory
+ */
+export const listSandboxFiles = async (sandboxId, path = '') => {
+  const daytona = getDaytonaClient();
+  
+  try {
+    const sandboxes = await daytona.list();
+    const sandbox = sandboxes.find(s => s.id === sandboxId);
+    
+    if (!sandbox) {
+      throw new Error(`Sandbox ${sandboxId} not found`);
+    }
+
+    // Get the root directory and construct full path
+    const rootDir = await sandbox.getUserRootDir();
+    const projectDir = `${rootDir}/project`;
+    const fullPath = path ? `${projectDir}/${path}` : projectDir;
+
+    // Use ls command with detailed output
+    const result = await sandbox.process.executeCommand(
+      `find "${fullPath}" -maxdepth 1 -type f -o -type d | tail -n +2 | while read file; do
+        if [ -d "$file" ]; then
+          echo "directory|$(basename "$file")|$file|0|$(stat -c %Y "$file" 2>/dev/null || echo 0)"
+        else
+          echo "file|$(basename "$file")|$file|$(stat -c %s "$file" 2>/dev/null || echo 0)|$(stat -c %Y "$file" 2>/dev/null || echo 0)"
+        fi
+      done`,
+      projectDir
+    );
+
+    if (result.exitCode !== 0) {
+      throw new Error(`Failed to list files: ${result.result}`);
+    }
+
+    // Parse the output
+    const files = result.result.trim().split('\n')
+      .filter(line => line.trim())
+      .map(line => {
+        const [type, name, path, size, lastModified] = line.split('|');
+        return {
+          name,
+          path: path.replace(projectDir + '/', ''),
+          type,
+          size: parseInt(size, 10),
+          lastModified: new Date(parseInt(lastModified, 10) * 1000).toISOString()
+        };
+      });
+
+    return files;
+
+  } catch (error) {
+    console.error("Error listing files in sandbox:", error);
+    throw error;
+  }
+};
+
+// Export the getDaytonaClient function for use in API routes
+export { getDaytonaClient };

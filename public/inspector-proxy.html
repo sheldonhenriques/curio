@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inspector Proxy</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+        #proxy-iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-family: Arial, sans-serif;
+            color: #666;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">Loading...</div>
+    <iframe id="proxy-iframe" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"></iframe>
+
+    <script>
+        (function() {
+            'use strict';
+            
+            console.log('[Inspector Proxy] Starting up');
+
+            // Get target URL from query parameter
+            const urlParams = new URLSearchParams(window.location.search);
+            const targetUrl = urlParams.get('url');
+            
+            if (!targetUrl) {
+                document.getElementById('loading').textContent = 'Error: No target URL specified';
+                return;
+            }
+
+            const iframe = document.getElementById('proxy-iframe');
+            const loading = document.getElementById('loading');
+            
+            // Inspector receiver for cross-origin injection
+            window.addEventListener('message', function(event) {
+                const { type, script } = event.data;
+
+                if (type === 'CURIO_INJECT_INSPECTOR') {
+                    console.log('[Inspector Proxy] Received injection request');
+                    
+                    try {
+                        // Check if already injected
+                        if (window.__CURIO_INSPECTOR_INJECTED__) {
+                            console.log('[Inspector Proxy] Inspector already injected');
+                            event.source.postMessage({
+                                type: 'CURIO_INJECTION_SUCCESS',
+                                timestamp: Date.now()
+                            }, '*');
+                            return;
+                        }
+
+                        // Create and execute script
+                        const scriptElement = document.createElement('script');
+                        scriptElement.textContent = script;
+                        scriptElement.setAttribute('data-curio-inspector', 'true');
+                        
+                        // Inject into head
+                        document.head.appendChild(scriptElement);
+                        
+                        console.log('[Inspector Proxy] Inspector script injected successfully');
+                        
+                        // Forward injection to the inner iframe as well
+                        if (iframe.contentWindow) {
+                            iframe.contentWindow.postMessage(event.data, '*');
+                        }
+                        
+                        // Notify parent of successful injection
+                        event.source.postMessage({
+                            type: 'CURIO_INJECTION_SUCCESS',
+                            timestamp: Date.now()
+                        }, '*');
+                        
+                    } catch (error) {
+                        console.error('[Inspector Proxy] Failed to inject script:', error);
+                        
+                        // Notify parent of failed injection
+                        event.source.postMessage({
+                            type: 'CURIO_INJECTION_ERROR',
+                            error: error.message,
+                            timestamp: Date.now()
+                        }, '*');
+                    }
+                } else {
+                    // Forward other messages to inner iframe
+                    if (iframe.contentWindow) {
+                        iframe.contentWindow.postMessage(event.data, '*');
+                    }
+                }
+            });
+
+            // Forward messages from inner iframe to parent
+            window.addEventListener('message', function(event) {
+                if (event.source === iframe.contentWindow) {
+                    window.parent.postMessage(event.data, '*');
+                }
+            });
+
+            // Load the target URL
+            iframe.onload = function() {
+                loading.style.display = 'none';
+                console.log('[Inspector Proxy] Target loaded:', targetUrl);
+            };
+
+            iframe.onerror = function() {
+                loading.textContent = 'Error loading target URL';
+                console.error('[Inspector Proxy] Failed to load:', targetUrl);
+            };
+
+            iframe.src = targetUrl;
+            
+        })();
+    </script>
+</body>
+</html>

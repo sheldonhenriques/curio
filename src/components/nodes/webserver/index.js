@@ -1,15 +1,16 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { useReactFlow } from "reactflow"
 import { DEVICE_SIZES } from "@/constants/node"
 import BaseNode from "@/components/nodes/basenode"
 import WebserverHeader from "@/components/nodes/webserver/WebserverHeader"
-import WebserverPreview from "@/components/nodes/webserver/WebserverPreview"
+import WebserverPreview from "@/components/nodes/webserver/CrossOriginWebserverPreview"
 
 export default function WebserverNode({ id, data, selected }) {
   const { setNodes } = useReactFlow()
   const [hasError, setHasError] = useState(data.hasError || false)
+  const [isInspectorActive, setIsInspectorActive] = useState(false)
 
   const extractPath = (url) => {
     try {
@@ -75,6 +76,33 @@ export default function WebserverNode({ id, data, selected }) {
     )
   }, [id, setNodes])
 
+  const handleInspectorToggle = useCallback(() => {
+    setIsInspectorActive(prev => !prev)
+  }, [])
+
+  // Keyboard shortcuts for inspector
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      // Only handle shortcuts when this node is selected
+      if (!selected) return
+
+      // Ctrl+Shift+I to toggle inspector
+      if (event.ctrlKey && event.shiftKey && event.key === 'I') {
+        event.preventDefault()
+        handleInspectorToggle()
+      }
+      
+      // Escape to disable inspector
+      if (event.key === 'Escape' && isInspectorActive) {
+        event.preventDefault()
+        setIsInspectorActive(false)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selected, isInspectorActive, handleInspectorToggle])
+
   const currentPath = extractPath(data.url)
 
   // Custom webserver content
@@ -85,6 +113,8 @@ export default function WebserverNode({ id, data, selected }) {
         path={currentPath}
         onPathChange={handlePathChange}
         hasError={hasError || data.hasError}
+        isInspectorActive={isInspectorActive}
+        onInspectorToggle={handleInspectorToggle}
       />
 
       <WebserverPreview
@@ -94,6 +124,8 @@ export default function WebserverNode({ id, data, selected }) {
         onLoadSuccess={handleLoadSuccess}
         onRetry={handleRetry}
         sandboxStatus={data.sandboxStatus}
+        isInspectorActive={isInspectorActive}
+        projectId={data.projectId}
       />
     </div>
   )

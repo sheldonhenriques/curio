@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple Inspector Test</title>
+</head>
+<body>
+    <h1>Simple Test Page</h1>
+    <div id="test-div" class="test-class bg-blue-500 p-4">Click me to test inspector</div>
+    
+    <script>
+        console.log('Simple test page loaded');
+        
+        // Listen for inspector injection
+        window.addEventListener('message', (event) => {
+            console.log('Message received:', event.data);
+            
+            if (event.data.type === 'CURIO_INJECT_INSPECTOR') {
+                console.log('Inspector injection requested');
+                try {
+                    eval(event.data.script);
+                    console.log('Inspector script executed');
+                    event.source.postMessage({ type: 'CURIO_INJECTION_SUCCESS' }, '*');
+                } catch (error) {
+                    console.error('Injection failed:', error);
+                    event.source.postMessage({ 
+                        type: 'CURIO_INJECTION_ERROR', 
+                        error: error.message 
+                    }, '*');
+                }
+            }
+        });
+        
+        // Add click handler for testing
+        document.getElementById('test-div').addEventListener('click', () => {
+            console.log('Test div clicked');
+            if (window.__CURIO_INSPECTOR__) {
+                console.log('Inspector found:', window.__CURIO_INSPECTOR__);
+            } else {
+                console.log('No inspector found');
+            }
+        });
+    </script>
+</body>
+</html>
