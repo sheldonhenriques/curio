@@ -238,6 +238,92 @@ This is a Next.js 15 application built with React 19 that implements a node-base
 - `ws: ^8.18.3` - WebSocket server implementation
 - `uuid: ^11.1.0` - Session ID generation
 
+## Visual Website Editor System
+
+**Current Status**: ✅ **IMPLEMENTED AND WORKING**
+
+**Overview**: Advanced visual editor that allows users to select DOM elements directly in webserver previews and modify their Tailwind CSS properties in real-time, similar to V0 or Webflow.
+
+**Core Features**:
+- **Visual Element Selection**: Click to select DOM elements with real-time border highlighting and hover effects
+- **Property Panel**: Sliding sidebar with organized Tailwind CSS property controls for selected elements
+- **Real-time Updates**: Changes applied immediately to both iframe preview and source files in sandbox
+- **Tailwind Integration**: Smart class replacement with conflict resolution and arbitrary value support
+- **Cross-origin Communication**: PostMessage API for seamless iframe-parent communication
+- **Auto SDK Integration**: Visual Editor SDK automatically included in Next.js sandbox projects
+
+**Technical Architecture**:
+- **Visual Editor SDK** (`src/services/visual-editor-sdk.js`): Client-side script injected into Next.js projects for element selection and manipulation
+- **Property Panel** (`src/components/nodes/webserver/PropertyPanel.js`): React component with organized Tailwind property controls
+- **Webserver Node Enhancements** (`src/components/nodes/webserver/`): Enhanced webserver nodes with select mode toggle and property panel integration
+- **File Modification API** (`app/api/projects/[id]/sandbox/files/modify/route.js`): Backend API for updating JSX/TSX files with new className attributes
+- **Sandbox Integration** (`src/services/sandboxService.js`): Automatic Visual Editor SDK injection during Next.js project creation
+
+**Advanced Features**:
+- **Element Highlighting**: Visual borders and overlays for hover and selection states with smooth transitions
+- **Smart Class Management**: Automatic detection and removal of conflicting Tailwind classes when applying new ones
+- **Property Categories**: Organized controls for Layout, Typography, Background & Borders, Content, and Advanced properties
+- **Arbitrary Values**: Support for custom Tailwind arbitrary values like `m-[23px]`, `bg-[#1da1f2]`, `text-[17px]`
+- **Element Path Tracking**: CSS selector generation for precise element targeting across DOM hierarchy
+- **Live Preview**: Immediate visual feedback without page refresh or file save delays
+
+**Property Panel Sections**:
+- **Layout**: Margin, padding, width, height, display, position with Tailwind spacing scale
+- **Typography**: Font size, weight, color, text alignment with Tailwind typography controls
+- **Background & Borders**: Background colors, border radius, border properties using Tailwind color palette
+- **Content**: Text content modification for text elements, direct inline editing
+- **Advanced**: Opacity, z-index, transform, overflow properties
+
+**Communication Flow**:
+1. **Select Mode Activation**: Toggle button in webserver header activates element selection mode
+2. **PostMessage Communication**: Bidirectional messaging between parent window and iframe using `*` origin for cross-domain compatibility
+3. **Element Detection**: Visual Editor SDK adds event listeners for mouseover, mouseout, and click events
+4. **Property Extraction**: Selected elements analyzed for computed styles, Tailwind classes, and metadata
+5. **Property Panel Display**: Element properties shown in organized sections with appropriate Tailwind controls
+6. **Real-time Updates**: Property changes immediately applied to DOM and persisted to source files via API
+7. **File Persistence**: JSX/TSX files updated with new className attributes through sandbox file modification API
+
+**Tailwind CSS Integration**:
+- **Class Replacement Strategy**: Replace conflicting Tailwind classes rather than adding duplicates
+- **Conflict Detection**: Automatic detection of conflicting patterns (e.g., `m-4` conflicts with `m-6`)
+- **Arbitrary Value Support**: Full support for Tailwind's arbitrary value syntax with square bracket notation
+- **Property Mapping**: Intelligent conversion of CSS properties to appropriate Tailwind class names
+
+**File Modification System**:
+- **JSX/TSX Parsing**: Simple regex-based className attribute updates for immediate functionality
+- **Sandbox Integration**: Uses existing Daytona SDK for secure file operations within development environments
+- **Multiple File Support**: Automatic detection and modification of React component files
+- **Error Handling**: Comprehensive error tracking for file read/write operations
+
+**Environment Integration**:
+- **Automatic SDK Injection**: Visual Editor SDK automatically added to Next.js projects during sandbox creation
+- **Layout Integration**: SDK script included in root layout.tsx for global availability
+- **No Manual Setup**: Zero-configuration installation - SDK included automatically in new sandboxes
+
+**User Experience Enhancements**:
+- **Smooth Animations**: CSS transitions for highlight overlays and property panel sliding
+- **Visual Feedback**: Clear visual indicators for hover, selection, and active states
+- **Keyboard Support**: Escape key to deactivate select mode and close property panels
+- **Responsive Design**: Property panel adapts to different screen sizes and node dimensions
+- **Error Recovery**: Graceful handling of communication failures and DOM manipulation errors
+
+**Technical Implementation Details**:
+- **Cross-origin Messaging**: PostMessage API with wildcard origin for maximum compatibility
+- **DOM Traversal**: Efficient element path generation using CSS selectors and element hierarchy
+- **Style Computation**: Real-time extraction of computed styles and Tailwind class detection
+- **Memory Management**: Proper cleanup of event listeners and overlay elements
+- **Performance Optimization**: Debounced event handlers and efficient DOM manipulation
+
+**API Endpoints**:
+- `POST /api/projects/[id]/sandbox/files/modify` - Update JSX/TSX files with new className attributes
+- `GET /api/projects/[id]/sandbox/files/modify?path=<path>` - List JSX/TSX files in sandbox for modification
+
+**Dependencies**:
+- Existing Daytona SDK for sandbox file operations
+- PostMessage API for iframe communication
+- Tailwind CSS for styling system integration
+- React/Next.js component architecture
+
 ## Memories
 
 - Memorizing to track development progress and key insights for the Curio project.

@@ -107,17 +107,10 @@ export default function ProductPage({ params }) {
     const hasSandboxId = !!project.sandboxId;
     const shouldPoll = hasTransitionalStatus || hasSandboxId;
     
-    console.log('🔄 PROJECT PAGE - Polling check for project:', project.id);
-    console.log('🔄 PROJECT PAGE - Has transitional status:', hasTransitionalStatus, '(status:', sandboxStatus, ')');
-    console.log('🔄 PROJECT PAGE - Has sandboxId:', hasSandboxId, '(sandboxId:', project.sandboxId, ')');
-    console.log('🔄 PROJECT PAGE - Should poll:', shouldPoll);
-    console.log('🔄 PROJECT PAGE - Current polling interval exists:', !!statusPollingIntervalRef.current);
     
     if (shouldPoll) {
       if (!statusPollingIntervalRef.current) {
-        console.log('🚀 PROJECT PAGE - Starting sandbox status polling...');
         statusPollingIntervalRef.current = setInterval(async () => {
-          console.log('📡 PROJECT PAGE - Polling for sandbox status updates...');
           try {
             // Check both project data and sandbox status
             const promises = [
@@ -134,23 +127,16 @@ export default function ProductPage({ params }) {
             
             if (projectResponse.ok) {
               const projectData = await projectResponse.json();
-              console.log('📊 PROJECT PAGE - Project data update:', { 
-                id: projectData.id, 
-                sandboxStatus: projectData.sandboxStatus,
-                sandboxId: projectData.sandboxId 
-              });
               setProject(projectData);
               
               // Update sandbox status from project data
               if (projectData.sandboxStatus && projectData.sandboxStatus !== sandboxStatus) {
-                console.log('🔄 PROJECT PAGE - Sandbox status changed:', sandboxStatus, '->', projectData.sandboxStatus);
                 setSandboxStatus(projectData.sandboxStatus);
               }
             }
             
             if (statusResponse && statusResponse.ok) {
               const statusData = await statusResponse.json();
-              console.log('📊 PROJECT PAGE - Live sandbox status update:', statusData);
               setSandboxStatus(statusData.status);
               if (statusData.previewUrl) {
                 setPreviewUrl(statusData.previewUrl);
@@ -164,7 +150,6 @@ export default function ProductPage({ params }) {
     } else {
       // Stop polling if not needed
       if (statusPollingIntervalRef.current) {
-        console.log('🛑 PROJECT PAGE - Stopping sandbox status polling');
         clearInterval(statusPollingIntervalRef.current);
         statusPollingIntervalRef.current = null;
       }
@@ -175,7 +160,6 @@ export default function ProductPage({ params }) {
   useEffect(() => {
     return () => {
       if (statusPollingIntervalRef.current) {
-        console.log('🧹 Cleaning up sandbox status polling interval on unmount');
         clearInterval(statusPollingIntervalRef.current);
         statusPollingIntervalRef.current = null;
       }

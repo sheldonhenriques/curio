@@ -1,9 +1,9 @@
 "use client"
 
 import { useState } from "react"
-import { Server, AlertCircle } from "lucide-react"
+import { Server, AlertCircle, MousePointer2 } from "lucide-react"
 
-const WebserverHeader = ({ url, path, onPathChange, hasError }) => {
+const WebserverHeader = ({ url, path, onPathChange, hasError, isSelectModeActive, onSelectModeToggle }) => {
   const [isEditing, setIsEditing] = useState(false)
   const [editablePath, setEditablePath] = useState(path)
 
@@ -48,6 +48,19 @@ const WebserverHeader = ({ url, path, onPathChange, hasError }) => {
           {path}
         </span>
       )}
+
+      {/* Select Mode Toggle Button */}
+      <button
+        onClick={onSelectModeToggle}
+        className={`p-1 rounded transition-colors flex-shrink-0 ${
+          isSelectModeActive
+            ? 'bg-blue-500 text-white shadow-sm' 
+            : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+        }`}
+        title={isSelectModeActive ? 'Exit Select Mode' : 'Enter Select Mode'}
+      >
+        <MousePointer2 className="w-4 h-4" />
+      </button>
 
       {hasError && <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />}
     </div>

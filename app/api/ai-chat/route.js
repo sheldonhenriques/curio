@@ -34,10 +34,6 @@ export async function POST(req) {
       );
     }
 
-    console.log("[AI-CHAT] Processing request for project:", projectId);
-    console.log("[AI-CHAT] Node ID:", nodeId);
-    console.log("[AI-CHAT] Session ID:", sessionId);
-    console.log("[AI-CHAT] User prompt:", prompt);
     
     // Connect to database
     await connectToDatabase();
@@ -59,7 +55,6 @@ export async function POST(req) {
       );
     }
 
-    console.log("[AI-CHAT] Using sandbox:", project.sandboxId);
     
     // Create a streaming response
     const encoder = new TextEncoder();
@@ -82,7 +77,6 @@ export async function POST(req) {
           throw new Error(`Sandbox ${project.sandboxId} not found or not accessible`);
         }
 
-        console.log("[AI-CHAT] Sandbox found and accessible");
 
         // Send initial status
         await writer.write(
@@ -97,7 +91,6 @@ export async function POST(req) {
         if (sessionId) {
           currentSession = await ChatSession.findOne({ sessionId, nodeId, isActive: true });
           if (!currentSession) {
-            console.log("[AI-CHAT] Session not found, creating new session");
           }
         }
         
@@ -138,7 +131,6 @@ IMPORTANT CONTEXT:
         // Get the project directory in the sandbox
         const projectDir = `${await sandbox.getUserRootDir()}/project`;
         
-        console.log("[AI-CHAT] Executing Claude Code CLI command:", claudeCommand);
 
         // Execute Claude Code CLI
         const execResult = await sandbox.process.executeCommand(
@@ -196,7 +188,6 @@ IMPORTANT CONTEXT:
           }
         } catch (parseError) {
           // If not valid JSON, treat as plain text output
-          console.log("[AI-CHAT] Non-JSON output, parsing as text");
           
           const outputLines = execResult.result.split('\n');
           for (const line of outputLines) {
@@ -228,7 +219,6 @@ IMPORTANT CONTEXT:
               isActive: true
             });
             await currentSession.save();
-            console.log("[AI-CHAT] Created new session:", extractedSessionId);
           } else {
             // Update existing session
             currentSession.sessionId = extractedSessionId;
@@ -273,7 +263,6 @@ IMPORTANT CONTEXT:
           })}\n\n`)
         );
         
-        console.log("[AI-CHAT] Modification completed successfully");
         
         // Send done signal
         await writer.write(encoder.encode("data: [DONE]\n\n"));
