@@ -20,9 +20,7 @@ export async function POST(_request, { params }) {
     let sandboxError = null;
     
     try {
-      console.log(`Retrying sandbox creation for project: ${project.title}`);
       sandboxData = await createSandbox(project.title);
-      console.log(`Sandbox created successfully: ${sandboxData.sandboxId}`);
     } catch (error) {
       console.error('Error creating sandbox:', error);
       sandboxError = error.message;

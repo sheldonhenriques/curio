@@ -15,7 +15,6 @@ export function useClaudeWebSocket() {
       wsRef.current = new WebSocket(wsUrl);
 
       wsRef.current.onopen = () => {
-        console.log('[WS] Connected to Claude WebSocket');
         setIsConnected(true);
         setConnectionError(null);
         
@@ -29,7 +28,6 @@ export function useClaudeWebSocket() {
       wsRef.current.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
-          console.log('[WS] Received message:', message.type);
           
           // Call all registered message callbacks
           messageCallbacksRef.current.forEach((callback) => {
@@ -45,12 +43,10 @@ export function useClaudeWebSocket() {
       };
 
       wsRef.current.onclose = (event) => {
-        console.log(`[WS] Disconnected from Claude WebSocket: ${event.code} ${event.reason}`);
         setIsConnected(false);
         
         // Only attempt to reconnect if it wasn't a manual disconnect
         if (event.code !== 1000 && !reconnectTimeoutRef.current) {
-          console.log('[WS] Attempting to reconnect in 3 seconds...');
           reconnectTimeoutRef.current = setTimeout(() => {
             connect();
           }, 3000);
@@ -86,7 +82,6 @@ export function useClaudeWebSocket() {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       try {
         const messageStr = JSON.stringify(message);
-        console.log('[WS] Sending message:', message.type);
         wsRef.current.send(messageStr);
         return true;
       } catch (error) {

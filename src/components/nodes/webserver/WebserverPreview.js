@@ -49,8 +49,6 @@ const WebserverPreview = ({ url, hasError, onLoadError, onLoadSuccess, onRetry, 
 
   // Handle messages from iframe
   const handleMessage = useCallback((event) => {
-    console.log('WebserverPreview received message:', event.data, 'from origin:', event.origin)
-    
     // Check if this is a Visual Editor message
     if (event.data && typeof event.data === 'object' && event.data.type && 
         (event.data.type.startsWith('VISUAL_EDITOR') || 
@@ -58,47 +56,34 @@ const WebserverPreview = ({ url, hasError, onLoadError, onLoadSuccess, onRetry, 
          event.data.type === 'SELECT_MODE_ACTIVATED' || 
          event.data.type === 'SELECT_MODE_DEACTIVATED' ||
          event.data.type === 'ELEMENT_UPDATED')) {
-      console.log('Visual Editor message detected')
       const { type, element } = event.data
 
       switch (type) {
         case 'VISUAL_EDITOR_READY':
-          console.log('Visual Editor SDK ready in iframe')
           break
         case 'SELECT_MODE_ACTIVATED':
-          console.log('Select mode activated in iframe')
           break
         case 'SELECT_MODE_DEACTIVATED':
-          console.log('Select mode deactivated in iframe')
           break
         case 'ELEMENT_SELECTED':
-          console.log('Element selected in iframe:', element)
           onElementSelected?.(element)
           break
         case 'ELEMENT_UPDATED':
-          console.log('Element updated:', element)
           break
         default:
-          console.log('Unknown Visual Editor message type:', type)
           break
       }
-    } else {
-      console.log('Message not a Visual Editor message:', event.data?.type || 'no type')
     }
   }, [onElementSelected])
 
   // Send message to iframe
   const sendToIframe = useCallback((message) => {
-    console.log('Sending message to iframe:', message)
     if (iframeRef.current && iframeRef.current.contentWindow) {
       try {
         iframeRef.current.contentWindow.postMessage(message, '*')
-        console.log('Message sent successfully to iframe')
       } catch (error) {
         console.error('Error sending message to iframe:', error)
       }
-    } else {
-      console.log('Iframe not ready or contentWindow not available')
     }
   }, [])
 
@@ -119,7 +104,6 @@ const WebserverPreview = ({ url, hasError, onLoadError, onLoadSuccess, onRetry, 
 
   // Expose method to send property updates to iframe
   const sendPropertyUpdate = useCallback((property, value) => {
-    console.log('WebserverPreview sendPropertyUpdate called:', property, value)
     const message = {
       type: 'UPDATE_ELEMENT_PROPERTY',
       data: {
@@ -128,7 +112,6 @@ const WebserverPreview = ({ url, hasError, onLoadError, onLoadSuccess, onRetry, 
         action: determineUpdateAction(property, value)
       }
     }
-    console.log('Sending UPDATE_ELEMENT_PROPERTY message to iframe:', message)
     sendToIframe(message)
   }, [sendToIframe])
 

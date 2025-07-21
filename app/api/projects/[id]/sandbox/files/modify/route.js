@@ -93,7 +93,6 @@ CURIO_EOF`
     })
 
   } catch (error) {
-    console.error('Error modifying file:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -227,7 +226,6 @@ export async function GET(request, { params }) {
     })
 
   } catch (error) {
-    console.error('Error listing files:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

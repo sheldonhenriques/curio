@@ -80,37 +80,25 @@ export default function WebserverNode({ id, data, selected }) {
   }, [id, setNodes])
 
   const handleSelectModeToggle = useCallback(() => {
-    console.log('Select mode toggle clicked, current state:', isSelectModeActive)
-    setIsSelectModeActive(prev => {
-      console.log('Setting select mode to:', !prev)
-      return !prev
-    })
+    setIsSelectModeActive(prev => !prev)
     if (isSelectModeActive) {
       setSelectedElement(null)
     }
   }, [isSelectModeActive])
 
   const handleElementSelected = useCallback((element) => {
-    console.log('Element selected in webserver node:', element)
-    console.log('Setting selectedElement to:', element)
     setSelectedElement(element)
   }, [])
 
   const handlePropertyChange = useCallback(async (property, value) => {
-    console.log('Property change:', property, value)
-    
     if (!selectedElement || !value) return
     
     // Convert property to Tailwind class
     const tailwindClass = convertPropertyToTailwind(property, value)
-    console.log('Converted to Tailwind class:', tailwindClass)
     
     // Send property change to iframe for immediate visual update
     if (updateElementFunction) {
-      console.log('Calling updateElementFunction with:', property, tailwindClass)
       updateElementFunction(property, tailwindClass)
-    } else {
-      console.warn('updateElementFunction not available')
     }
     
     // Update files in sandbox
@@ -144,11 +132,7 @@ export default function WebserverNode({ id, data, selected }) {
           const result = await response.json()
           if (!result.success) {
             console.error('Failed to update file:', result.error)
-          } else {
-            console.log('File updated successfully:', result.message)
           }
-        } else {
-          console.warn('No project ID available for file modification')
         }
       } catch (error) {
         console.error('Error updating file:', error)

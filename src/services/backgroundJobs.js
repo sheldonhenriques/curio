@@ -8,7 +8,6 @@ import Project from '@/models/Project';
  * @param {string} projectTitle - The project title
  */
 export const createSandboxJob = async (projectId, projectTitle) => {
-  console.log(`🔄 Starting background sandbox creation for project ${projectId}: ${projectTitle}`);
   
   try {
     await connectToDatabase();
@@ -26,7 +25,6 @@ export const createSandboxJob = async (projectId, projectTitle) => {
     
     // Create the sandbox
     const sandboxData = await createSandbox(projectTitle);
-    console.log(`✅ Sandbox created successfully for project ${projectId}: ${sandboxData.sandboxId}`);
     
     // Update project with sandbox data
     await Project.findOneAndUpdate(
@@ -40,7 +38,6 @@ export const createSandboxJob = async (projectId, projectTitle) => {
       }
     );
     
-    console.log(`✅ Project ${projectId} updated with sandbox information`);
     
     return {
       success: true,
@@ -117,5 +114,4 @@ export const scheduleSandboxCreation = (projectId, projectTitle) => {
   // Process queue on next tick to avoid blocking the response
   process.nextTick(processQueue);
   
-  console.log(`📅 Scheduled sandbox creation for project ${projectId}: ${projectTitle}`);
 };
