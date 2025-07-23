@@ -80,7 +80,7 @@ const InputField = ({ label, value, onChange, type = "text", options = null, suf
   )
 }
 
-const PropertyPanel = ({ element, isVisible, onClose, onPropertyChange }) => {
+const FloatingPropertyPanel = ({ element, isVisible, onClose, onPropertyChange }) => {
   const [openSections, setOpenSections] = useState({
     layout: true,
     typography: false,
@@ -263,7 +263,7 @@ const PropertyPanel = ({ element, isVisible, onClose, onPropertyChange }) => {
   ]
 
   return (
-    <div className="absolute top-0 right-0 w-80 h-full bg-white border-l border-gray-200 shadow-lg z-50 overflow-y-auto">
+    <div className="fixed top-20 right-0 w-80 h-[calc(100vh-5rem)] bg-white border-l border-gray-200 shadow-lg z-50 overflow-y-auto">
       {/* Header */}
       <div className="flex items-center justify-between p-3 border-b border-gray-200 bg-gray-50">
         <div>
@@ -401,4 +401,4 @@ const PropertyPanel = ({ element, isVisible, onClose, onPropertyChange }) => {
   )
 }
 
-export default PropertyPanel
+export default FloatingPropertyPanel
