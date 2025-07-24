@@ -143,7 +143,7 @@ export default function ProductPage({ params }) {
               }
             }
           } catch (error) {
-            console.error('❌ PROJECT PAGE - Error polling sandbox status:', error);
+            console.error('Error polling sandbox status:', error);
           }
         }, 5000); // Poll every 5 seconds for better debugging
       }

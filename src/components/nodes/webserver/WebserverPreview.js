@@ -74,7 +74,6 @@ const WebserverPreview = ({ url, hasError, onLoadError, onLoadSuccess, onRetry, 
           case 'ELEMENT_UPDATED':
             break
           case 'TEXT_CONTENT_UPDATED':
-            console.log('Text content updated successfully in iframe:', event.data.newText)
             break
           case 'TEXT_UPDATE_ERROR':
             console.error('Text update error from iframe:', error)
@@ -122,13 +121,13 @@ const WebserverPreview = ({ url, hasError, onLoadError, onLoadSuccess, onRetry, 
         property,
         value,
         visualId,
-        action: determineUpdateAction(property, value)
+        action: determineUpdateAction(property)
       }
     }
     sendToIframe(message)
   }, [sendToIframe])
 
-  const determineUpdateAction = (property, value) => {
+  const determineUpdateAction = (property) => {
     if (property === 'textContent') {
       return 'UPDATE_TEXT_CONTENT'
     } else if (property.startsWith('data-') || property === 'src' || property === 'href') {

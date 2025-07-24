@@ -1,5 +1,7 @@
-import connectToDatabase from './mongodb.js';
-import ChatSession from '../models/ChatSession.js';
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 class SessionCleanupService {
   constructor() {
@@ -7,19 +9,39 @@ class SessionCleanupService {
     this.intervalId = null;
     this.cleanupIntervalHours = 5;
     this.sessionMaxAgeHours = 5;
+    this.supabase = null;
+  }
+
+  getSupabaseClient() {
+    if (!this.supabase && supabaseUrl && supabaseServiceKey) {
+      this.supabase = createClient(supabaseUrl, supabaseServiceKey);
+    }
+    return this.supabase;
   }
 
   async cleanupOldSessions() {
     try {
-      await connectToDatabase();
+      const supabase = this.getSupabaseClient();
       
-      const result = await ChatSession.cleanupOldSessions(this.sessionMaxAgeHours);
-      
-      const deletedCount = result.deletedCount || 0;
-      
-      if (deletedCount > 0) {
-        console.log(`[SessionCleanup] Cleaned up ${deletedCount} old sessions`);
+      if (!supabase) {
+        throw new Error('Supabase client not available - check environment variables');
       }
+      
+      // Delete chat sessions older than the specified hours
+      const cutoffTime = new Date(Date.now() - this.sessionMaxAgeHours * 60 * 60 * 1000);
+      
+      const { data, error } = await supabase
+        .from('chat_sessions')
+        .delete()
+        .lt('created_at', cutoffTime.toISOString())
+        .select('id');
+      
+      if (error) {
+        throw error;
+      }
+      
+      const deletedCount = data?.length || 0;
+      
       
       return {
         success: true,
@@ -39,11 +61,8 @@ class SessionCleanupService {
 
   start() {
     if (this.isRunning) {
-      console.log('[SessionCleanup] Cleanup service is already running');
       return;
     }
-
-    console.log(`[SessionCleanup] Starting cleanup service (interval: ${this.cleanupIntervalHours}h, max age: ${this.sessionMaxAgeHours}h)`);
     
     this.isRunning = true;
     
@@ -58,11 +77,8 @@ class SessionCleanupService {
 
   stop() {
     if (!this.isRunning) {
-      console.log('[SessionCleanup] Cleanup service is not running');
       return;
     }
-
-    console.log('[SessionCleanup] Stopping cleanup service');
     
     this.isRunning = false;
     

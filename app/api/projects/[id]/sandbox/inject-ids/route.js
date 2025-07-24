@@ -211,7 +211,6 @@ export async function POST(request, { params }) {
       try {
         require('@babel/parser');
       } catch (e) {
-        console.log('Installing AST dependencies...');
         execSync('npm install @babel/parser @babel/traverse @babel/types @babel/generator', { 
           cwd: '/workspace',
           stdio: 'inherit' 
@@ -221,7 +220,6 @@ export async function POST(request, { params }) {
       // Process the workspace
       const injector = new ASTIdInjector();
       injector.processDirectory('/workspace/project').then(results => {
-        console.log(JSON.stringify(results, null, 2));
       }).catch(error => {
         console.error('Error:', error);
         process.exit(1);
@@ -243,7 +241,6 @@ export async function POST(request, { params }) {
         processedFiles = JSON.parse(jsonMatch[0]);
       }
     } catch (e) {
-      console.log('Could not parse injection results:', e);
     }
 
     return NextResponse.json({

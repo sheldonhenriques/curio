@@ -126,7 +126,6 @@ class ASTIdInjector {
       const ext = path.extname(filePath);
       if (['.jsx', '.tsx', '.js', '.ts'].includes(ext)) {
         try {
-          console.log(`Processing file: ${filePath}`);
           const modifiedCode = await this.injectIds(filePath);
           fs.writeFileSync(filePath, modifiedCode, 'utf8');
           results.push({
@@ -134,7 +133,6 @@ class ASTIdInjector {
             status: 'success',
             elementsProcessed: this.elementCounter
           });
-          console.log(`✓ Processed ${filePath} (${this.elementCounter} elements)`);
         } catch (error) {
           console.error(`✗ Error processing ${filePath}:`, error.message);
           results.push({
@@ -182,37 +180,20 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`Starting AST ID injection for directory: ${targetDir}`);
-  
   const injector = new ASTIdInjector();
   
   try {
     const results = await injector.processDirectory(targetDir);
     
-    console.log('\n=== AST ID Injection Results ===');
-    console.log(`Total files processed: ${results.length}`);
-    
     const successful = results.filter(r => r.status === 'success');
     const failed = results.filter(r => r.status === 'error');
     
-    console.log(`✓ Successful: ${successful.length}`);
-    console.log(`✗ Failed: ${failed.length}`);
-    
-    if (successful.length > 0) {
-      console.log('\nSuccessful files:');
-      successful.forEach(result => {
-        console.log(`  - ${result.file} (${result.elementsProcessed} elements)`);
-      });
-    }
-    
     if (failed.length > 0) {
-      console.log('\nFailed files:');
+      console.error('\nFailed files:');
       failed.forEach(result => {
-        console.log(`  - ${result.file}: ${result.error}`);
+        console.error(`  - ${result.file}: ${result.error}`);
       });
     }
-    
-    console.log('\nAST ID injection completed successfully');
     
   } catch (error) {
     console.error('AST ID injection failed:', error);

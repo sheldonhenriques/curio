@@ -1,6 +1,5 @@
 import { Daytona } from "@daytonaio/sdk";
-import connectToDatabase from '@/lib/mongodb';
-import ChatSession from '@/models/ChatSession';
+import { createClient } from '@/utils/supabase/server';
 
 export async function POST(req) {
   try {
@@ -34,9 +33,17 @@ export async function POST(req) {
       );
     }
 
+    // Initialize Supabase client
+    const supabase = await createClient();
     
-    // Connect to database
-    await connectToDatabase();
+    // Check authentication
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { "Content-Type": "application/json" } }
+      );
+    }
     
     // Get project data to retrieve sandbox ID
     const projectResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/projects/${projectId}`);
@@ -89,15 +96,30 @@ export async function POST(req) {
         // Load or create session
         let currentSession = null;
         if (sessionId) {
-          currentSession = await ChatSession.findOne({ sessionId, nodeId, isActive: true });
-          if (!currentSession) {
-          }
+          const { data: sessionData } = await supabase
+            .from('chat_sessions')
+            .select('*')
+            .eq('session_id', sessionId)
+            .eq('node_id', nodeId)
+            .eq('user_id', user.id)
+            .eq('is_active', true)
+            .single();
+          
+          currentSession = sessionData;
         }
         
         // Store user message
         const userMessageId = new Date().getTime().toString();
         if (currentSession) {
-          await currentSession.addMessage('user', prompt, { timestamp: new Date() });
+          await supabase
+            .from('messages')
+            .insert({
+              message_id: userMessageId,
+              chat_session_id: currentSession.id,
+              type: 'user',
+              content: prompt,
+              metadata: { timestamp: new Date().toISOString() }
+            });
         }
 
         // Prepare Claude Code CLI command
@@ -211,39 +233,75 @@ IMPORTANT CONTEXT:
         if (extractedSessionId) {
           if (!currentSession) {
             // Create new session
-            currentSession = new ChatSession({
-              sessionId: extractedSessionId,
-              nodeId,
-              projectId,
-              messages: [],
-              isActive: true
-            });
-            await currentSession.save();
+            const { data: newSessionData } = await supabase
+              .from('chat_sessions')
+              .insert({
+                session_id: extractedSessionId,
+                user_id: user.id,
+                node_id: nodeId,
+                project_id: parseInt(projectId),
+                is_active: true
+              })
+              .select()
+              .single();
+            
+            currentSession = newSessionData;
           } else {
             // Update existing session
-            currentSession.sessionId = extractedSessionId;
-            await currentSession.save();
+            await supabase
+              .from('chat_sessions')
+              .update({ session_id: extractedSessionId })
+              .eq('id', currentSession.id);
+            
+            currentSession.session_id = extractedSessionId;
           }
           
           // Store all messages in database
+          const messagesToInsert = [];
           for (const msg of messages) {
+            const messageId = new Date().getTime().toString() + Math.random().toString(36).substring(2, 11);
+            
             if (msg.type === 'text') {
-              await currentSession.addMessage('assistant', msg.text || msg.content, { 
-                timestamp: new Date(),
-                messageType: 'text' 
+              messagesToInsert.push({
+                message_id: messageId,
+                chat_session_id: currentSession.id,
+                type: 'assistant',
+                content: msg.text || msg.content,
+                metadata: { 
+                  timestamp: new Date().toISOString(),
+                  messageType: 'text' 
+                }
               });
             } else if (msg.type === 'tool_use') {
-              await currentSession.addMessage('tool_use', JSON.stringify(msg), { 
-                timestamp: new Date(),
-                toolName: msg.name,
-                toolInput: msg.input 
+              messagesToInsert.push({
+                message_id: messageId,
+                chat_session_id: currentSession.id,
+                type: 'tool_use',
+                content: JSON.stringify(msg),
+                metadata: { 
+                  timestamp: new Date().toISOString(),
+                  toolName: msg.name,
+                  toolInput: msg.input 
+                }
               });
             } else if (msg.type === 'tool_result') {
-              await currentSession.addMessage('tool_result', msg.result, { 
-                timestamp: new Date(),
-                messageType: 'tool_result' 
+              messagesToInsert.push({
+                message_id: messageId,
+                chat_session_id: currentSession.id,
+                type: 'tool_result',
+                content: msg.result,
+                metadata: { 
+                  timestamp: new Date().toISOString(),
+                  messageType: 'tool_result' 
+                }
               });
             }
+          }
+          
+          if (messagesToInsert.length > 0) {
+            await supabase
+              .from('messages')
+              .insert(messagesToInsert);
           }
           
           // Send session ID to client
@@ -272,10 +330,19 @@ IMPORTANT CONTEXT:
         
         // Store error in session if available
         if (currentSession) {
-          await currentSession.addMessage('error', error.message, { 
-            timestamp: new Date(),
-            errorType: 'execution_error' 
-          });
+          const errorMessageId = new Date().getTime().toString() + Math.random().toString(36).substring(2, 11);
+          await supabase
+            .from('messages')
+            .insert({
+              message_id: errorMessageId,
+              chat_session_id: currentSession.id,
+              type: 'error',
+              content: error.message,
+              metadata: { 
+                timestamp: new Date().toISOString(),
+                errorType: 'execution_error' 
+              }
+            });
         }
         
         await writer.write(

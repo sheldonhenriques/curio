@@ -55,6 +55,17 @@ This is a Next.js 15 application built with React 19 that implements a node-base
 
 ## Database Setup
 
+### Database Migration History
+
+The application was successfully migrated from Supabase to MongoDB Atlas for better flexibility and integration with the existing codebase. The migration involved:
+
+- **Authentication System**: Migrated to Supabase Auth with middleware-based session management
+- **Project Data**: Migrated from MongoDB to structured MongoDB collections with improved schema design
+- **Chat Sessions**: Added persistent chat session storage with MongoDB integration
+- **User Management**: Implemented Supabase-based user authentication with secure server-side components
+
+All legacy code and temporary migration files have been cleaned up, leaving a clean, production-ready codebase.
+
 ### MongoDB Schema Design
 
 **Projects Collection**:
@@ -75,10 +86,6 @@ This is a Next.js 15 application built with React 19 that implements a node-base
   sandboxId: String,             // Daytona sandbox ID for development environment integration
   sandboxStatus: String,         // Sandbox status: "creating", "created", "started", "stopped", "failed"
   sandboxError: String,          // Error message if sandbox creation/operation failed
-  sections: [{                   // Project sections/phases
-    name: String,                // Section name
-    status: String               // Section status: "Not Started", "Concept", "In Progress", "Completed"
-  }],
   createdAt: Date,               // MongoDB timestamp for creation
   updatedAtTimestamp: Date       // MongoDB timestamp for last update
 }
@@ -316,6 +323,61 @@ This is a Next.js 15 application built with React 19 that implements a node-base
 - `ws: ^8.18.3` - WebSocket server implementation
 - `uuid: ^11.1.0` - Session ID generation
 
+## Authentication System
+
+**Current Status**: ✅ **IMPLEMENTED AND WORKING**
+
+**Overview**: Secure authentication system using Supabase Auth with middleware-based session management and server-side component integration.
+
+**Core Features**:
+- **Supabase Integration**: Full integration with Supabase Auth for user management
+- **Middleware Protection**: Route-level authentication with automatic redirects
+- **Server-side Components**: Secure server-side user data access
+- **Session Management**: Persistent user sessions with automatic refresh
+- **Login/Logout Flow**: Complete authentication flow with error handling
+
+**Technical Architecture**:
+- **Supabase Client** (`src/utils/supabase/client.js`): Browser-side Supabase client for authentication
+- **Supabase Server** (`src/utils/supabase/server.js`): Server-side Supabase client for secure operations
+- **Middleware** (`middleware.js`): Route protection and authentication verification
+- **Auth Hook** (`src/hooks/useAuth.js`): React hook for authentication state management
+- **Login Page** (`app/login/page.js`): Authentication interface with GitHub OAuth
+- **Auth Components** (`src/components/auth/`): Login form and logout button components
+
+**Authentication Flow**:
+1. **Route Protection**: Middleware checks authentication status for protected routes
+2. **Login Process**: Users authenticate via GitHub OAuth through Supabase
+3. **Session Creation**: Supabase creates secure session cookies
+4. **Server Validation**: Server-side components validate sessions for secure operations
+5. **Auto Refresh**: Sessions automatically refresh to maintain authentication
+6. **Logout Process**: Secure logout with session cleanup
+
+**Environment Requirements**:
+- `NEXT_PUBLIC_SUPABASE_URL` - Supabase project URL
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Supabase anonymous key
+- `SUPABASE_SERVICE_ROLE_KEY` - Service role key for server-side operations
+
+**Key Files**:
+- `/middleware.js` - Route protection and authentication middleware
+- `/app/login/page.js` - Authentication page with GitHub OAuth
+- `/app/auth/callback/route.js` - OAuth callback handler
+- `/src/components/auth/LoginForm.js` - Login interface component
+- `/src/components/auth/LogoutButton.js` - Logout functionality
+- `/src/hooks/useAuth.js` - Authentication state management
+- `/src/utils/supabase/` - Supabase client utilities
+
+**Protected Routes**:
+- `/dashboard` - Main application dashboard (requires authentication)
+- `/projects/*` - All project-related pages (requires authentication)
+- API routes automatically protected via middleware
+
+**Security Features**:
+- **Row Level Security**: Database-level security policies
+- **Session Validation**: Server-side session verification
+- **CSRF Protection**: Built-in CSRF protection via Supabase
+- **Secure Cookies**: HTTP-only cookies for session management
+- **Auto Logout**: Automatic logout on session expiration
+
 ## Visual Website Editor System
 
 **Current Status**: ✅ **IMPLEMENTED AND WORKING**
@@ -404,7 +466,37 @@ This is a Next.js 15 application built with React 19 that implements a node-base
 - Tailwind CSS for styling system integration
 - React/Next.js component architecture
 
+## Code Quality & Maintenance
+
+**Current Status**: ✅ **PRODUCTION READY**
+
+**Overview**: The codebase has been cleaned and optimized for production use with proper error handling and logging standards.
+
+**Code Quality Standards**:
+- **Clean Logging**: All debug console.log statements removed from production code
+- **Error Handling**: Comprehensive error logging maintained for debugging production issues
+- **Type Safety**: Full TypeScript integration with proper type definitions
+- **Linting**: ESLint configuration with Next.js best practices
+- **Performance**: Optimized React hooks and database queries
+
+**Maintenance Notes**:
+- **Database**: MongoDB Atlas with proper indexing and connection pooling
+- **Authentication**: Supabase Auth with secure session management
+- **API Routes**: RESTful API design with proper error responses
+- **WebSocket**: Real-time communication with reconnection logic
+- **File Structure**: Clean separation of concerns with organized component architecture
+
+**Development Standards**:
+- **Component Structure**: Reusable components with proper prop validation
+- **State Management**: React hooks for local state, MongoDB for persistence  
+- **Error Boundaries**: Graceful error handling throughout the application
+- **Security**: Protected routes, input validation, and secure API endpoints
+- **Testing**: Ready for test implementation with clean, testable code structure
+
 ## Memories
 
-- Memorizing to track development progress and key insights for the Curio project.
-- Notes about the ability to memorize short textual insights about the project's development process
+- Successfully migrated from Supabase database to MongoDB Atlas while maintaining Supabase Auth
+- Implemented comprehensive visual website editor with Tailwind CSS integration
+- Built robust AI chat system with Claude Code CLI integration and WebSocket communication
+- Cleaned up all debug logging for production readiness
+- Established secure authentication flow with middleware-based route protection

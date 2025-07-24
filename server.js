@@ -1,9 +1,9 @@
-const { createServer } = require('http');
-const { parse } = require('url');
-const next = require('next');
-const WebSocket = require('ws');
-const { Daytona } = require('@daytonaio/sdk');
-const { v4: uuidv4 } = require('uuid');
+import { createServer } from 'http';
+import { parse } from 'url';
+import next from 'next';
+import { WebSocketServer, WebSocket } from 'ws';
+import { Daytona } from '@daytonaio/sdk';
+import { v4 as uuidv4 } from 'uuid';
 // Note: Using Daytona SDK's executeCommand instead of spawn for better sandbox integration
 
 // Import session cleanup service (will be lazy loaded when needed)
@@ -35,7 +35,7 @@ app.prepare().then(() => {
   });
 
   // WebSocket server for AI chat
-  const wss = new WebSocket.Server({ 
+  const wss = new WebSocketServer({ 
     server,
     path: '/api/claude-ws'
   });
@@ -150,7 +150,6 @@ app.prepare().then(() => {
           const data = await response.json();
           if (data.session && data.session.sessionId) {
             claudeSessionId = data.session.sessionId;
-            console.log(`[Chat] Using existing Claude session: ${claudeSessionId}`);
           }
         }
       } catch (error) {
@@ -230,7 +229,6 @@ IMPORTANT CONTEXT:
         }
 
         // Execute command and stream output
-        console.log(`[Chat] Executing full Claude command:`, claudeCommand);
         const sessionCommand = await sandbox.process.executeSessionCommand(streamSessionId, {
           command: claudeCommand,
           runAsync: true,
@@ -240,14 +238,12 @@ IMPORTANT CONTEXT:
         });
 
         const cmdId = sessionCommand.cmdId;
-        console.log(`[Chat] Claude command started with cmdId: ${cmdId}`);
 
         // Stream the output in real-time with timeout
         try {
           let outputReceived = false;
           const streamTimeout = setTimeout(() => {
             if (!outputReceived) {
-              console.log(`[Chat] No output received after 30s for cmdId: ${cmdId}`);
               safeSend(ws, {
                 type: 'error', 
                 message: 'Claude command timed out - no output received'
@@ -259,16 +255,13 @@ IMPORTANT CONTEXT:
             if (chunk && chunk.trim()) {
               outputReceived = true;
               clearTimeout(streamTimeout);
-              console.log(`[Chat] Received output chunk for cmdId: ${cmdId}, content:`, chunk.substring(0, 300));
               // Parse and send the chunk immediately with buffering
               // Completion detection happens in parseClaudeStreamChunk
               parseClaudeStreamChunkWithBuffering(ws, chunk);
             }
           });
-          console.log(`[Chat] Claude command completed for cmdId: ${cmdId}`);
           clearTimeout(streamTimeout);
         } catch (streamError) {
-          console.error(`[Chat] Streaming error for cmdId ${cmdId}:`, streamError);
           safeSend(ws, {
             type: 'error',
             message: `Streaming error: ${streamError.message}`
@@ -371,8 +364,7 @@ IMPORTANT CONTEXT:
           const claudeMessage = JSON.parse(jsonStr);
           processClaudeMessage(ws, claudeMessage);
         } catch (parseError) {
-          console.error('[Chat] Failed to parse complete JSON:', parseError.message);
-          console.error('[Chat] Problematic JSON:', jsonStr.substring(0, 200));
+          // Failed to parse JSON - skip malformed message
         }
       } else {
         // Incomplete JSON object, stop processing and keep in buffer
@@ -386,7 +378,6 @@ IMPORTANT CONTEXT:
     
     // If buffer gets too large (> 100KB), clear it to prevent memory issues
     if (remainingBuffer.length > 100000) {
-      console.warn('[Chat] JSON buffer too large, clearing for connection:', ws.connectionId);
       jsonBuffers.set(ws.connectionId, '');
     }
   }
@@ -451,7 +442,6 @@ IMPORTANT CONTEXT:
 
   server.listen(port, async () => {
     console.log(`> Ready on http://${hostname}:${port}`);
-    console.log(`> WebSocket endpoint: ws://${hostname}:${port}/api/claude-ws`);
     
     // Start session cleanup service
     try {
@@ -465,7 +455,6 @@ IMPORTANT CONTEXT:
   
   // Graceful shutdown
   process.on('SIGINT', () => {
-    console.log('\nShutting down server...');
     if (sessionCleanupService) {
       sessionCleanupService.stop();
     }
@@ -473,7 +462,6 @@ IMPORTANT CONTEXT:
   });
   
   process.on('SIGTERM', () => {
-    console.log('\nShutting down server...');
     if (sessionCleanupService) {
       sessionCleanupService.stop();
     }
