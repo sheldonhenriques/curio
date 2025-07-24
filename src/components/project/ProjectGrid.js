@@ -1,6 +1,6 @@
 import { ProjectCard } from '@/components/project/ProjectCard';
 
-export const ProjectGrid = ({ projects, onToggleStar }) => {
+export const ProjectGrid = ({ projects, onToggleStar, onDelete }) => {
   if (projects.length === 0) {
     return (
       <div className="text-center py-12">
@@ -16,6 +16,7 @@ export const ProjectGrid = ({ projects, onToggleStar }) => {
           key={project.id}
           project={project}
           onToggleStar={onToggleStar}
+          onDelete={onDelete}
         />
       ))}
     </div>

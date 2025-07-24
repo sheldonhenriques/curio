@@ -5,6 +5,7 @@ import { ProjectHeader } from '@/components/project/ProjectHeader';
 import { ProjectFilters } from '@/components/project/ProjectFilters';
 import { ProjectGrid } from '@/components/project/ProjectGrid';
 import { ProjectCreateForm } from '@/components/project/ProjectCreateForm';
+import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { useProjects } from '@/hooks/useProjects';
 
 const DashboardPage = () => {
@@ -17,13 +18,60 @@ const DashboardPage = () => {
     searchTerm,
     handleSearchChange,
     handleToggleStar,
-    handleCreateProject
+    handleCreateProject,
+    handleDeleteProject
   } = useProjects();
 
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState({
+    isOpen: false,
+    projectId: null,
+    projectTitle: '',
+    isLoading: false
+  });
 
   const handleNewProject = () => {
     setShowCreateForm(true);
+  };
+
+  const handleDeleteClick = (projectId) => {
+    const project = projects.find(p => p.id === projectId);
+    setDeleteConfirmation({
+      isOpen: true,
+      projectId,
+      projectTitle: project?.title || 'Unknown Project',
+      isLoading: false
+    });
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteConfirmation.projectId) return;
+
+    setDeleteConfirmation(prev => ({ ...prev, isLoading: true }));
+
+    try {
+      await handleDeleteProject(deleteConfirmation.projectId);
+      setDeleteConfirmation({
+        isOpen: false,
+        projectId: null,
+        projectTitle: '',
+        isLoading: false
+      });
+    } catch (error) {
+      console.error('Failed to delete project:', error);
+      // Keep dialog open on error, remove loading state
+      setDeleteConfirmation(prev => ({ ...prev, isLoading: false }));
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    if (deleteConfirmation.isLoading) return;
+    setDeleteConfirmation({
+      isOpen: false,
+      projectId: null,
+      projectTitle: '',
+      isLoading: false
+    });
   };
 
   return (
@@ -52,7 +100,8 @@ const DashboardPage = () => {
         ) : (
           <ProjectGrid 
             projects={projects} 
-            onToggleStar={handleToggleStar} 
+            onToggleStar={handleToggleStar}
+            onDelete={handleDeleteClick}
           />
         )}
       </div>
@@ -63,6 +112,18 @@ const DashboardPage = () => {
           onSubmit={handleCreateProject}
         />
       )}
+
+      <ConfirmationDialog
+        isOpen={deleteConfirmation.isOpen}
+        onClose={handleDeleteCancel}
+        onConfirm={handleDeleteConfirm}
+        title="Delete Project"
+        message={`Are you sure you want to delete "${deleteConfirmation.projectTitle}"? This action will permanently remove the project and any associated sandbox environment.`}
+        confirmText="Delete Project"
+        cancelText="Cancel"
+        type="danger"
+        isLoading={deleteConfirmation.isLoading}
+      />
     </div>
   );
 };

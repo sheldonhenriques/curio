@@ -205,6 +205,27 @@ export const getSandboxStatus = async (sandboxId) => {
   }
 };
 
+export const deleteSandbox = async (sandboxId) => {
+  const daytona = getDaytonaClient();
+  
+  try {
+    const sandboxes = await daytona.list();
+    const sandbox = sandboxes.find(s => s.id === sandboxId);
+    
+    if (!sandbox) {
+      return { status: 'deleted', message: 'Sandbox not found (already deleted or never existed)' };
+    }
+    
+    await sandbox.delete();
+    
+    return { status: 'deleted', message: 'Sandbox successfully deleted' };
+
+  } catch (error) {
+    console.error("Error deleting sandbox:", error);
+    throw error;
+  }
+};
+
 /**
  * Add Visual Editor SDK to Next.js project with version checking
  */
