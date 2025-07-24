@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import Project from '@/models/Project';
+import { deleteSandbox } from '@/services/sandboxService';
 
-export async function GET(request, { params }) {
+export async function GET(_request, { params }) {
   try {
     await connectToDatabase();
     const { id } = await params;
@@ -58,12 +59,13 @@ export async function PUT(request, { params }) {
   }
 }
 
-export async function DELETE(request, { params }) {
+export async function DELETE(_request, { params }) {
   try {
     await connectToDatabase();
     const { id } = await params;
     
-    const project = await Project.findOneAndDelete({ id: parseInt(id) });
+    // First, find the project to get sandbox information
+    const project = await Project.findOne({ id: parseInt(id) });
     if (!project) {
       return NextResponse.json(
         { error: 'Project not found' },
@@ -71,7 +73,26 @@ export async function DELETE(request, { params }) {
       );
     }
     
-    return NextResponse.json({ message: 'Project deleted successfully' });
+    // If project has a sandbox, try to delete it
+    let sandboxDeletionMessage = null;
+    if (project.sandboxId) {
+      try {
+        const sandboxResult = await deleteSandbox(project.sandboxId);
+        sandboxDeletionMessage = sandboxResult.message;
+      } catch (sandboxError) {
+        console.error(`Failed to delete sandbox for project ${id}:`, sandboxError.message);
+        sandboxDeletionMessage = `Warning: Failed to delete sandbox: ${sandboxError.message}`;
+        // Continue with project deletion even if sandbox deletion fails
+      }
+    }
+    
+    // Delete the project from database
+    await Project.findOneAndDelete({ id: parseInt(id) });
+    
+    return NextResponse.json({ 
+      message: 'Project deleted successfully',
+      sandboxMessage: sandboxDeletionMessage
+    });
   } catch (error) {
     console.error('Error deleting project:', error);
     return NextResponse.json(

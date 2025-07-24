@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { filterProjects } from '@/utils/projectFilters';
 
 export const useProjects = () => {
@@ -7,9 +7,10 @@ export const useProjects = () => {
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [deletingProjects, setDeletingProjects] = useState(new Set());
   const pollingIntervalRef = useRef(null);
 
-  const fetchProjects = async () => {
+  const fetchProjects = useCallback(async () => {
     try {
       setLoading(true);
       const response = await fetch('/api/projects');
@@ -24,7 +25,7 @@ export const useProjects = () => {
           return { ...project, sandboxStatus: null };
         }
         return project;
-      });
+      }).filter(project => !deletingProjects.has(project.id)); // Filter out projects being deleted
       
       setProjects(processedData);
       setError(null);
@@ -34,11 +35,11 @@ export const useProjects = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [deletingProjects]);
 
   useEffect(() => {
     fetchProjects();
-  }, []);
+  }, [fetchProjects]);
 
   // Polling effect for projects with 'creating' status
   useEffect(() => {
@@ -80,8 +81,9 @@ export const useProjects = () => {
                 }
               }
               
-              // Update projects with live status data
-              setProjects(updatedProjects);
+              // Filter out projects being deleted and update projects with live status data
+              const filteredProjects = updatedProjects.filter(project => !deletingProjects.has(project.id));
+              setProjects(filteredProjects);
               
               // Check if we should stop polling (only stop if no creating projects)
               const stillCreating = data.filter(p => p.sandboxStatus === 'creating');
@@ -104,7 +106,7 @@ export const useProjects = () => {
         pollingIntervalRef.current = null;
       }
     }
-  }, [projects]);
+  }, [projects, deletingProjects]);
 
   // Cleanup effect
   useEffect(() => {
@@ -174,6 +176,56 @@ export const useProjects = () => {
     }
   };
 
+  const handleDeleteProject = async (projectId) => {
+    try {
+      // Mark project as being deleted
+      setDeletingProjects(prev => new Set([...prev, projectId]));
+      
+      // Immediately remove from UI
+      setProjects(prevProjects => 
+        prevProjects.filter(p => p.id !== projectId)
+      );
+
+      const response = await fetch(`/api/projects/${projectId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        // If deletion failed, remove from deleting set and restore project
+        setDeletingProjects(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(projectId);
+          return newSet;
+        });
+        
+        // Re-fetch projects to restore the project in UI
+        await fetchProjects();
+        
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete project');
+      }
+
+      const result = await response.json();
+      
+      // Log sandbox deletion status if available
+      if (result.sandboxMessage) {
+        console.log('Sandbox cleanup:', result.sandboxMessage);
+      }
+
+      // Remove from deleting set after successful deletion
+      setDeletingProjects(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(projectId);
+        return newSet;
+      });
+
+      return result;
+    } catch (err) {
+      console.error('Error deleting project:', err);
+      throw err;
+    }
+  };
+
   const handleSearchChange = (e) => {
     setSearchTerm(e.target.value);
   };
@@ -188,6 +240,7 @@ export const useProjects = () => {
     handleSearchChange,
     handleToggleStar,
     handleCreateProject,
+    handleDeleteProject,
     refreshProjects: fetchProjects
   };
 };
