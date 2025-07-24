@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, createContext, useContext } from 'react';
+import { useCallback, useEffect, useMemo, useState, createContext, useContext, useRef } from 'react';
 import ReactFlow, {
   useNodesState,
   useEdgesState,
@@ -91,19 +91,75 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
     [setEdges]
   );
 
+  // Debounce timeout ref for text content updates
+  const textContentTimeoutRef = useRef(null)
+  
+  // Debounced handler for text content updates
+  const debouncedTextContentUpdate = useCallback(async (property, value) => {
+    if (!selectedElement || !value) return
+    
+    // Clear existing timeout
+    if (textContentTimeoutRef.current) {
+      clearTimeout(textContentTimeoutRef.current)
+    }
+    
+    // Send immediate visual update to iframe
+    if (updateElementFunction) {
+      updateElementFunction(property, value, selectedElement.visualId)
+    }
+    
+    // Debounce the file update (wait 800ms after user stops typing)
+    textContentTimeoutRef.current = setTimeout(async () => {
+      if (project?.sandboxId) {
+        
+        try {
+          const response = await fetch(`/api/projects/${project.id}/sandbox/files/modify`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              visualId: selectedElement.visualId,
+              elementSelector: selectedElement.elementPath,
+              xpath: selectedElement.xpath,
+              property,
+              value
+            })
+          })
+          
+          const result = await response.json()
+          if (!result.success) {
+            console.error('Failed to update text content:', result.error)
+            // Don't show alert for debounced updates to avoid interrupting user
+          }
+        } catch (error) {
+          console.error('Error updating text content (debounced):', error)
+        }
+      }
+    }, 400) // 400ms debounce delay
+  }, [selectedElement, project, updateElementFunction])
+
   const handlePropertyChange = useCallback(async (property, value) => {
     if (!selectedElement || !value) return
     
-    // Convert property to Tailwind class
+    // Handle textContent differently from CSS properties
+    if (property === 'textContent') {
+      // Use debounced handler for text content
+      debouncedTextContentUpdate(property, value)
+      return
+    }
+    
+    // Handle CSS property changes
     const tailwindClass = convertPropertyToTailwind(property, value)
     
     // Send property change to iframe for immediate visual update
     if (updateElementFunction) {
-      updateElementFunction(property, tailwindClass)
+      updateElementFunction(property, tailwindClass, selectedElement.visualId)
     }
     
     // Update files in sandbox
     if (project?.sandboxId) {
+      
       try {
         const response = await fetch(`/api/projects/${project.id}/sandbox/files/modify`, {
           method: 'POST',
@@ -111,8 +167,9 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            filePath: 'src/app/page.tsx', // Default to main page - this should be dynamic in production
-            elementSelector: selectedElement.elementPath,
+            visualId: selectedElement.visualId,
+            elementSelector: selectedElement.elementPath, // Keep as fallback
+            xpath: selectedElement.xpath, // Add XPath for precise targeting
             newClassName: tailwindClass,
             property,
             value
@@ -122,9 +179,15 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
         const result = await response.json()
         if (!result.success) {
           console.error('Failed to update file:', result.error)
+          if (result.sandboxStatus && result.sandboxStatus !== 'started') {
+            alert(`File update failed: Sandbox is not running (${result.sandboxStatus}). Please start the sandbox from the project dashboard.`)
+          } else {
+            alert(`Failed to update file: ${result.error}`)
+          }
         }
       } catch (error) {
         console.error('Error updating file:', error)
+        alert(`Error updating file: ${error.message}`)
       }
     }
   }, [updateElementFunction, selectedElement, project])
@@ -167,6 +230,15 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
 
   const handlePropertyPanelClose = useCallback(() => {
     setSelectedElement(null)
+  }, [])
+
+  // Cleanup timeout on component unmount
+  useEffect(() => {
+    return () => {
+      if (textContentTimeoutRef.current) {
+        clearTimeout(textContentTimeoutRef.current)
+      }
+    }
   }, [])
 
   // Context value for property panel

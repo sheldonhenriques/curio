@@ -2,7 +2,12 @@
  * Visual Editor SDK for Curio Webserver Nodes
  * This script gets injected into Next.js sandbox projects to enable visual element selection
  * and property editing capabilities.
+ * 
+ * @version 1.0.0
  */
+
+// Visual Editor SDK Version
+const CURIO_VISUAL_EDITOR_VERSION = '1.0.0';
 
 class CurioVisualEditor {
   constructor() {
@@ -26,11 +31,15 @@ class CurioVisualEditor {
     // Send ready message to parent
     this.sendToParent({
       type: 'VISUAL_EDITOR_READY',
-      url: window.location.href
+      url: window.location.href,
+      version: CURIO_VISUAL_EDITOR_VERSION
     });
   }
 
   createOverlays() {
+    // Remove existing overlays first to prevent duplicates
+    this.removeOverlays();
+    
     // Create hover highlight overlay
     this.highlightOverlay = document.createElement('div');
     this.highlightOverlay.id = 'curio-highlight-overlay';
@@ -59,6 +68,19 @@ class CurioVisualEditor {
     document.body.appendChild(this.selectionOverlay);
   }
 
+  removeOverlays() {
+    // Safely remove existing overlays
+    const existingHighlight = document.getElementById('curio-highlight-overlay');
+    if (existingHighlight && existingHighlight.parentNode) {
+      existingHighlight.parentNode.removeChild(existingHighlight);
+    }
+    
+    const existingSelection = document.getElementById('curio-selection-overlay');
+    if (existingSelection && existingSelection.parentNode) {
+      existingSelection.parentNode.removeChild(existingSelection);
+    }
+  }
+
   handleParentMessage(event) {
     // Use wildcard origin for cross-origin communication
     // Note: In a production environment, you might want to validate the origin
@@ -85,10 +107,15 @@ class CurioVisualEditor {
     this.isSelectModeActive = true;
     document.body.style.cursor = 'crosshair';
     
+    // Store bound functions for proper removal later
+    this.handleMouseOverBound = this.handleMouseOver.bind(this);
+    this.handleMouseOutBound = this.handleMouseOut.bind(this);
+    this.handleClickBound = this.handleClick.bind(this);
+    
     // Add event listeners
-    document.addEventListener('mouseover', this.handleMouseOver.bind(this));
-    document.addEventListener('mouseout', this.handleMouseOut.bind(this));
-    document.addEventListener('click', this.handleClick.bind(this));
+    document.addEventListener('mouseover', this.handleMouseOverBound);
+    document.addEventListener('mouseout', this.handleMouseOutBound);
+    document.addEventListener('click', this.handleClickBound);
     
     this.sendToParent({
       type: 'SELECT_MODE_ACTIVATED'
@@ -99,14 +126,26 @@ class CurioVisualEditor {
     this.isSelectModeActive = false;
     document.body.style.cursor = 'default';
     
-    // Remove event listeners
-    document.removeEventListener('mouseover', this.handleMouseOver.bind(this));
-    document.removeEventListener('mouseout', this.handleMouseOut.bind(this));
-    document.removeEventListener('click', this.handleClick.bind(this));
+    // Remove event listeners with proper function references
+    if (this.handleMouseOverBound) {
+      document.removeEventListener('mouseover', this.handleMouseOverBound);
+    }
+    if (this.handleMouseOutBound) {
+      document.removeEventListener('mouseout', this.handleMouseOutBound);
+    }
+    if (this.handleClickBound) {
+      document.removeEventListener('click', this.handleClickBound);
+    }
     
-    // Hide overlays
-    this.highlightOverlay.style.display = 'none';
-    this.selectionOverlay.style.display = 'none';
+    // Hide overlays safely
+    if (this.highlightOverlay) {
+      this.highlightOverlay.style.display = 'none';
+    }
+    if (this.selectionOverlay) {
+      this.selectionOverlay.style.display = 'none';
+    }
+    
+    // Note: We don't remove data-visual-id as it's permanently injected by AST parser
     
     // Clear selections
     this.hoveredElement = null;
@@ -115,6 +154,22 @@ class CurioVisualEditor {
     this.sendToParent({
       type: 'SELECT_MODE_DEACTIVATED'
     });
+  }
+
+  generateFallbackId(element) {
+    // Generate a fallback ID based on element characteristics
+    const tagName = element.tagName.toLowerCase();
+    const classList = element.className.replace(/\s+/g, '_');
+    const textContent = element.textContent?.trim().substring(0, 20).replace(/\s+/g, '_') || '';
+    const timestamp = Date.now();
+    
+    return `fallback_${tagName}_${classList}_${textContent}_${timestamp}`.substring(0, 100);
+  }
+
+  generateUniqueId() {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2, 11);
+    return `curio-${timestamp}-${random}`;
   }
 
   handleMouseOver(event) {
@@ -141,8 +196,17 @@ class CurioVisualEditor {
     this.selectedElement = event.target;
     this.highlightElement(event.target, this.selectionOverlay);
     
+    // Use the AST-injected data-visual-id if available, otherwise fallback to generating one
+    let visualId = this.selectedElement.getAttribute('data-visual-id');
+    if (!visualId) {
+      // Fallback for elements without AST-injected IDs
+      visualId = this.generateFallbackId(this.selectedElement);
+    }
+    
     // Extract element data and send to parent
     const elementData = this.extractElementData(event.target);
+    elementData.visualId = visualId; // Use visualId instead of curioId
+    
     this.sendToParent({
       type: 'ELEMENT_SELECTED',
       element: elementData
@@ -202,7 +266,8 @@ class CurioVisualEditor {
         width: rect.width,
         height: rect.height
       },
-      elementPath: this.getElementPath(element)
+      elementPath: this.getElementPath(element),
+      xpath: this.getElementXPath(element)
     };
   }
 
@@ -267,37 +332,93 @@ class CurioVisualEditor {
     return path.join(' > ');
   }
 
-  updateElementProperty(data) {
-    if (!this.selectedElement) return;
+  getElementXPath(element) {
+    if (!element || element === document.body) {
+      return '/html/body';
+    }
     
-    const { property, value, action } = data;
+    const path = [];
+    let current = element;
+    
+    while (current && current !== document.body) {
+      let index = 1;
+      let sibling = current.previousElementSibling;
+      
+      // Count preceding siblings of the same tag name
+      while (sibling) {
+        if (sibling.tagName === current.tagName) {
+          index++;
+        }
+        sibling = sibling.previousElementSibling;
+      }
+      
+      const tagName = current.tagName.toLowerCase();
+      let pathSegment = tagName;
+      
+      // Add index if there are multiple elements of the same type
+      const parent = current.parentElement;
+      if (parent) {
+        const similarSiblings = parent.querySelectorAll(tagName);
+        if (similarSiblings.length > 1) {
+          pathSegment += `[${index}]`;
+        }
+      }
+      
+      path.unshift(pathSegment);
+      current = current.parentElement;
+    }
+    
+    return '/html/body/' + path.join('/');
+  }
+
+  updateElementProperty(data) {
+    const { property, value, action, visualId } = data;
+    
+    // Find element by visualId (either data-visual-id or fallback)
+    let targetElement = this.selectedElement;
+    if (visualId) {
+      // First try to find by data-visual-id (AST-injected)
+      targetElement = document.querySelector(`[data-visual-id="${visualId}"]`);
+      
+      // If not found and it's a fallback ID, use the currently selected element
+      if (!targetElement && visualId.startsWith('fallback_')) {
+        targetElement = this.selectedElement;
+      }
+      
+      if (!targetElement) {
+        return;
+      }
+    }
+    
+    if (!targetElement) return;
     
     switch (action) {
       case 'UPDATE_TAILWIND_CLASS':
-        this.updateTailwindClass(property, value);
+        this.updateTailwindClass(property, value, targetElement);
         break;
       case 'UPDATE_TEXT_CONTENT':
-        this.updateTextContent(value);
+        this.updateTextContent(value, targetElement);
         break;
       case 'UPDATE_ATTRIBUTE':
-        this.updateAttribute(property, value);
+        this.updateAttribute(property, value, targetElement);
         break;
       default:
         break;
     }
     
     // Send updated element data back to parent
-    const updatedData = this.extractElementData(this.selectedElement);
+    const updatedData = this.extractElementData(targetElement);
+    updatedData.visualId = visualId; // Preserve the visualId
     this.sendToParent({
       type: 'ELEMENT_UPDATED',
       element: updatedData
     });
   }
 
-  updateTailwindClass(property, newClass) {
-    if (!this.selectedElement) return;
+  updateTailwindClass(property, newClass, targetElement = this.selectedElement) {
+    if (!targetElement) return;
     
-    const currentClasses = this.selectedElement.className.split(' ').filter(cls => cls.trim());
+    const currentClasses = targetElement.className.split(' ').filter(cls => cls.trim());
     
     // Remove conflicting classes based on property type
     const conflictPatterns = this.getConflictPatterns(property);
@@ -310,7 +431,7 @@ class CurioVisualEditor {
       filteredClasses.push(newClass);
     }
     
-    this.selectedElement.className = filteredClasses.join(' ');
+    targetElement.className = filteredClasses.join(' ');
   }
 
   getConflictPatterns(property) {
@@ -360,24 +481,60 @@ class CurioVisualEditor {
     return conflicts[property] || [];
   }
 
-  updateTextContent(newText) {
-    if (!this.selectedElement) return;
+  updateTextContent(newText, targetElement = this.selectedElement) {
+    if (!targetElement) return;
     
-    // Only update text content for elements that primarily contain text
-    const textElements = ['p', 'span', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'a', 'button'];
-    
-    if (textElements.includes(this.selectedElement.tagName.toLowerCase())) {
-      this.selectedElement.textContent = newText;
+    try {
+      // Only update text content for elements that primarily contain text
+      const textElements = ['p', 'span', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'a', 'button'];
+      
+      if (textElements.includes(targetElement.tagName.toLowerCase())) {
+        // For elements with mixed content (text + HTML), preserve child elements while updating text
+        const hasChildElements = targetElement.children.length > 0;
+        
+        if (hasChildElements) {
+          // Store child elements
+          const childElements = Array.from(targetElement.children);
+          
+          // Create a temporary container to restructure content
+          const textNode = document.createTextNode(newText);
+          
+          // Clear and rebuild content
+          targetElement.innerHTML = '';
+          targetElement.appendChild(textNode);
+          
+          // Re-append child elements
+          childElements.forEach(child => {
+            targetElement.appendChild(child);
+          });
+        } else {
+          // Simple text content update
+          targetElement.textContent = newText;
+        }
+        
+        // Send success notification
+        this.sendToParent({
+          type: 'TEXT_CONTENT_UPDATED',
+          element: this.extractElementData(targetElement),
+          newText: newText
+        });
+      }
+    } catch (error) {
+      console.error('Error updating text content:', error);
+      this.sendToParent({
+        type: 'TEXT_UPDATE_ERROR',
+        error: error.message
+      });
     }
   }
 
-  updateAttribute(attributeName, value) {
-    if (!this.selectedElement) return;
+  updateAttribute(attributeName, value, targetElement = this.selectedElement) {
+    if (!targetElement) return;
     
     if (value === null || value === '') {
-      this.selectedElement.removeAttribute(attributeName);
+      targetElement.removeAttribute(attributeName);
     } else {
-      this.selectedElement.setAttribute(attributeName, value);
+      targetElement.setAttribute(attributeName, value);
     }
   }
 

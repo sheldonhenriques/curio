@@ -9,6 +9,10 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@babel/generator": "^7.28.0",
+    "@babel/parser": "^7.28.0",
+    "@babel/traverse": "^7.28.0",
+    "@babel/types": "^7.28.1",
     "@daytonaio/sdk": "^0.22.1",
     "lucide-react": "^0.525.0",
     "mongoose": "^8.16.3",
