@@ -49,30 +49,42 @@ const WebserverPreview = ({ url, hasError, onLoadError, onLoadSuccess, onRetry, 
 
   // Handle messages from iframe
   const handleMessage = useCallback((event) => {
-    // Check if this is a Visual Editor message
-    if (event.data && typeof event.data === 'object' && event.data.type && 
-        (event.data.type.startsWith('VISUAL_EDITOR') || 
-         event.data.type === 'ELEMENT_SELECTED' || 
-         event.data.type === 'SELECT_MODE_ACTIVATED' || 
-         event.data.type === 'SELECT_MODE_DEACTIVATED' ||
-         event.data.type === 'ELEMENT_UPDATED')) {
-      const { type, element } = event.data
+    try {
+      // Check if this is a Visual Editor message
+      if (event.data && typeof event.data === 'object' && event.data.type && 
+          (event.data.type.startsWith('VISUAL_EDITOR') || 
+           event.data.type === 'ELEMENT_SELECTED' || 
+           event.data.type === 'SELECT_MODE_ACTIVATED' || 
+           event.data.type === 'SELECT_MODE_DEACTIVATED' ||
+           event.data.type === 'ELEMENT_UPDATED' ||
+           event.data.type === 'TEXT_CONTENT_UPDATED' ||
+           event.data.type === 'TEXT_UPDATE_ERROR')) {
+        const { type, element, error } = event.data
 
-      switch (type) {
-        case 'VISUAL_EDITOR_READY':
-          break
-        case 'SELECT_MODE_ACTIVATED':
-          break
-        case 'SELECT_MODE_DEACTIVATED':
-          break
-        case 'ELEMENT_SELECTED':
-          onElementSelected?.(element)
-          break
-        case 'ELEMENT_UPDATED':
-          break
-        default:
-          break
+        switch (type) {
+          case 'VISUAL_EDITOR_READY':
+            break
+          case 'SELECT_MODE_ACTIVATED':
+            break
+          case 'SELECT_MODE_DEACTIVATED':
+            break
+          case 'ELEMENT_SELECTED':
+            onElementSelected?.(element)
+            break
+          case 'ELEMENT_UPDATED':
+            break
+          case 'TEXT_CONTENT_UPDATED':
+            console.log('Text content updated successfully in iframe:', event.data.newText)
+            break
+          case 'TEXT_UPDATE_ERROR':
+            console.error('Text update error from iframe:', error)
+            break
+          default:
+            break
+        }
       }
+    } catch (error) {
+      console.error('Error handling iframe message:', error)
     }
   }, [onElementSelected])
 
@@ -103,12 +115,13 @@ const WebserverPreview = ({ url, hasError, onLoadError, onLoadSuccess, onRetry, 
   }, [isSelectModeActive, sendToIframe])
 
   // Expose method to send property updates to iframe
-  const sendPropertyUpdate = useCallback((property, value) => {
+  const sendPropertyUpdate = useCallback((property, value, visualId) => {
     const message = {
       type: 'UPDATE_ELEMENT_PROPERTY',
       data: {
         property,
         value,
+        visualId,
         action: determineUpdateAction(property, value)
       }
     }

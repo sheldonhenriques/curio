@@ -55,6 +55,21 @@ export const createSandbox = async (projectName) => {
     // Add Visual Editor SDK to the Next.js project
     await addVisualEditorSDK(sandbox, projectDir);
     
+    // Install AST dependencies for ID injection
+    const installASTDeps = await sandbox.process.executeCommand(
+      `npm install @babel/parser @babel/traverse @babel/types @babel/generator`,
+      projectDir,
+      undefined,
+      120
+    );
+
+    if (installASTDeps.exitCode !== 0) {
+      console.warn(`Warning: Failed to install AST dependencies: ${installASTDeps.result}`);
+    }
+    
+    // Inject AST IDs into JSX/TSX files
+    await injectASTIds(sandbox, projectDir);
+    
     await sandbox.process.executeCommand(
       `nohup npm run dev > dev-server.log 2>&1 &`,
       projectDir,
@@ -99,6 +114,9 @@ export const startSandbox = async (sandboxId) => {
 
     const rootDir = await sandbox.getUserRootDir();
     const projectDir = `${rootDir}/project`;
+
+    // Check and update Visual Editor SDK if needed
+    await addVisualEditorSDK(sandbox, projectDir);
 
     const checkServer = await sandbox.process.executeCommand(
       "curl -s -o /dev/null -w '%{http_code}' http://localhost:3000 || echo 'failed'",
@@ -156,6 +174,7 @@ export const getSandboxStatus = async (sandboxId) => {
   
   try {
     const sandboxes = await daytona.list();
+    
     const sandbox = sandboxes.find(s => s.id === sandboxId);
     
     if (!sandbox) {
@@ -187,26 +206,58 @@ export const getSandboxStatus = async (sandboxId) => {
 };
 
 /**
- * Add Visual Editor SDK to Next.js project
+ * Add Visual Editor SDK to Next.js project with version checking
  */
 async function addVisualEditorSDK(sandbox, projectDir) {
   try {
-    // Get the Visual Editor SDK content
-    const sdkContent = getVisualEditorSDKContent();
+    // Get the current Visual Editor SDK content and version
+    const currentSDKContent = getVisualEditorSDKContent();
+    const currentVersion = extractVersionFromSDK(currentSDKContent);
 
-    // Create the SDK file in the public directory of the Next.js project
-    const createSDKCommand = `cat > "${projectDir}/public/curio-visual-editor.js" << 'CURIO_EOF'
-${sdkContent}
-CURIO_EOF`;
-
-    const createSDKResult = await sandbox.process.executeCommand(
-      createSDKCommand,
+    // Check if SDK already exists in sandbox
+    const sdkPath = `${projectDir}/public/curio-visual-editor.js`;
+    const checkSDKResult = await sandbox.process.executeCommand(
+      `test -f "${sdkPath}" && echo "exists" || echo "not_found"`,
       projectDir
     );
 
-    if (createSDKResult.exitCode !== 0) {
-      console.warn(`Warning: Failed to create Visual Editor SDK file: ${createSDKResult.result}`);
-      return;
+    let shouldUpdate = true;
+
+    if (checkSDKResult.result?.trim() === 'exists') {
+      // Read existing SDK content to check version
+      const readSDKResult = await sandbox.process.executeCommand(
+        `cat "${sdkPath}"`,
+        projectDir
+      );
+
+      if (readSDKResult.exitCode === 0) {
+        const existingSdkContent = readSDKResult.result;
+        const existingVersion = extractVersionFromSDK(existingSdkContent);
+
+
+        // Compare versions (simple string comparison for now)
+        if (existingVersion === currentVersion) {
+          shouldUpdate = false;
+        }
+      }
+    }
+
+    if (shouldUpdate) {
+      // Create or update the SDK file in the public directory of the Next.js project
+      const createSDKCommand = `cat > "${sdkPath}" << 'CURIO_EOF'
+${currentSDKContent}
+CURIO_EOF`;
+
+      const createSDKResult = await sandbox.process.executeCommand(
+        createSDKCommand,
+        projectDir
+      );
+
+      if (createSDKResult.exitCode !== 0) {
+        console.warn(`Warning: Failed to create/update Visual Editor SDK file: ${createSDKResult.result}`);
+        return;
+      }
+
     }
 
     // Modify the layout.tsx file to include the Visual Editor SDK
@@ -262,4 +313,58 @@ function getVisualEditorSDKContent() {
   // Read the standalone SDK file
   const sdkPath = path.resolve(process.cwd(), 'src/services/visual-editor-sdk.js');
   return fs.readFileSync(sdkPath, 'utf8');
+}
+
+/**
+ * Extract version number from Visual Editor SDK content
+ */
+function extractVersionFromSDK(sdkContent) {
+  // Look for the version constant in the SDK content
+  const versionMatch = sdkContent.match(/const CURIO_VISUAL_EDITOR_VERSION = ['"`]([^'"`]+)['"`]/);
+  return versionMatch ? versionMatch[1] : 'unknown';
+}
+
+/**
+ * Inject AST-based unique IDs into JSX/TSX files
+ */
+async function injectASTIds(sandbox, projectDir) {
+  try {
+    
+    // Step 1: Read the AST injector script from our local file
+    const astInjectorPath = path.resolve(process.cwd(), 'src/services/ast-injector.js');
+    const astInjectorContent = fs.readFileSync(astInjectorPath, 'utf8');
+    
+    const sandboxScriptPath = `${projectDir}/ast-injector.js`;
+    
+    // Step 2: Write the script to the sandbox using heredoc (no escaping issues)
+    const writeScriptCommand = `cat > "${sandboxScriptPath}" << 'CURIO_EOF'
+${astInjectorContent}
+CURIO_EOF`;
+
+    const writeResult = await sandbox.process.executeCommand(writeScriptCommand, projectDir);
+    
+    if (writeResult.exitCode !== 0) {
+      throw new Error(`Failed to write AST injector script: ${writeResult.result}`);
+    }
+    
+    
+    // Step 3: Execute the script in the sandbox
+    const executeResult = await sandbox.process.executeCommand(
+      `node ast-injector.js "${projectDir}"`,
+      projectDir,
+      undefined,
+      180
+    );
+    
+    // Step 4: Clean up the script file
+    await sandbox.process.executeCommand(`rm -f "${sandboxScriptPath}"`, projectDir);
+    
+    if (executeResult.exitCode !== 0) {
+      console.warn('AST ID injection failed:', executeResult.result);
+    }
+
+  } catch (error) {
+    console.warn('Warning: Failed to inject AST IDs:', error.message);
+    // Don't throw error - continue with sandbox creation even if AST injection fails
+  }
 }
