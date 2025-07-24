@@ -113,19 +113,28 @@ This is a Next.js 15 application built with React 19 that implements a node-base
 - `POST /api/projects` - Create new project (auto-generates sequential ID)
 - `GET /api/projects/[id]` - Get specific project by ID
 - `PUT /api/projects/[id]` - Update project (includes star toggle)
-- `DELETE /api/projects/[id]` - Delete project
+- `DELETE /api/projects/[id]` - Delete project and associated sandbox
 
 **Sandbox Management API Endpoints**:
 - `POST /api/projects/[id]/sandbox/retry` - Retry sandbox creation for a project
 - `POST /api/projects/[id]/sandbox/start` - Start an existing sandbox
 - `GET /api/projects/[id]/sandbox/status` - Get sandbox status and preview URL
 - `POST /api/projects/[id]/sandbox/stop` - Stop a running sandbox
+- `POST /api/projects/[id]/sandbox/inject-ids` - Inject unique AST-based IDs into JSX/TSX files
 
 **Dashboard Integration**:
 - Projects are loaded from MongoDB Atlas via `/src/hooks/useProjects.js`
 - Real-time updates: star toggles, project creation persist to database
 - Loading states and error handling implemented
 - "New Project" button opens `/src/components/project/ProjectCreateForm.js`
+- Project deletion with confirmation dialog and sandbox cleanup
+
+**Project Deletion System**:
+- **Complete Removal**: Deletes both MongoDB project record and associated Daytona sandbox
+- **UI Integration**: Dropdown menu in project cards with trash icon and confirmation dialog
+- **Optimistic Updates**: Projects immediately removed from UI with rollback on failure
+- **Graceful Error Handling**: Project deletion continues even if sandbox cleanup fails
+- **Key Files**: `useProjects.js` hook, `ProjectCard.js` dropdown, dashboard confirmation dialog
 
 **MongoDB Atlas Setup Requirements**:
 1. **Connection String Format**: `mongodb+srv://username:password@cluster.mongodb.net/curio?retryWrites=true&w=majority&appName=ClusterName`
@@ -170,6 +179,75 @@ This is a Next.js 15 application built with React 19 that implements a node-base
 - Next.js projects created with TypeScript, Tailwind CSS, and ESLint
 - Development server runs on port 3000 with auto-restart capabilities
 - Background job queue prevents blocking UI during sandbox operations
+- Automatic AST-based ID injection for visual editor compatibility
+
+**Enhanced Sandbox Setup Process**:
+1. **Next.js Project Creation**: Standard create-next-app with TypeScript and Tailwind
+2. **Claude Code SDK Installation**: Global installation for AI chat functionality  
+3. **Visual Editor SDK Injection**: Automatic integration for visual editing capabilities
+4. **AST Dependencies**: Installation of Babel parsing libraries for code manipulation
+5. **ID Injection**: Automatic injection of `data-visual-id` attributes into all JSX/TSX files
+6. **Development Server**: Start with enhanced capabilities for visual editing
+
+## AST-Based Element ID Injection System
+
+**Current Status**: ✅ **IMPLEMENTED AND WORKING**
+
+**Overview**: Advanced system that automatically injects unique `data-visual-id` attributes into all JSX/TSX elements in Next.js projects to enable precise visual editor targeting and DOM manipulation.
+
+**Core Features**:
+- **Automatic ID Generation**: Unique IDs generated per component using pattern `ComponentName_ElementType_Index`
+- **AST-Based Processing**: Uses Babel parser for safe JSX/TSX manipulation without breaking code syntax
+- **Batch Processing**: Processes entire project directories recursively with smart filtering
+- **Sandbox Integration**: Executes directly within Daytona sandboxes during project creation
+- **On-Demand API**: REST endpoint for manual ID injection when needed
+
+**Technical Architecture**:
+- **AST Injector Class** (`src/services/astIdInjector.js`): Core logic for parsing and injecting IDs using Babel AST
+- **Standalone Script** (`src/services/ast-injector.js`): CLI version for command-line execution within sandboxes
+- **API Endpoint** (`app/api/projects/[id]/sandbox/inject-ids/route.js`): REST API for on-demand injection
+- **Sandbox Integration**: Automatic injection during sandbox creation in `sandboxService.js`
+
+**ID Generation Strategy**:
+- **Component Name**: Extracted from filename (e.g., `UserProfile.jsx` → `UserProfile`)
+- **Element Type**: JSX element name (e.g., `div`, `button`, `UserCard`)
+- **Index**: Sequential counter per component (0, 1, 2, ...)
+- **Final Format**: `UserProfile_div_0`, `UserProfile_button_1`, `UserProfile_UserCard_2`
+
+**Advanced Features**:
+- **Duplicate Prevention**: Skips elements that already have `data-visual-id` attributes
+- **TypeScript Support**: Full support for both JSX and TSX files with proper parsing
+- **Fragment Handling**: Special handling for React fragments and complex JSX structures
+- **Directory Traversal**: Automatically skips `node_modules`, `.next`, and `.git` directories
+- **Error Recovery**: Continues processing other files if individual files fail to parse
+- **Dependency Management**: Auto-installs Babel dependencies in sandbox if missing
+
+**Integration Points**:
+- **Sandbox Creation**: IDs automatically injected when creating new Next.js projects
+- **Visual Editor**: IDs enable precise element targeting for the visual website editor
+- **Property Panel**: Selected elements identified by these unique IDs for property manipulation
+- **Cross-frame Communication**: IDs used for PostMessage communication between iframe and parent
+
+**Workflow**:
+1. **Project Creation**: AST ID injection triggered during sandbox setup
+2. **File Discovery**: Recursively finds all JSX/TSX files in project directory
+3. **AST Parsing**: Each file parsed using Babel parser with JSX plugin
+4. **ID Injection**: Unique `data-visual-id` attributes added to all JSX elements
+5. **Code Generation**: Modified AST converted back to source code
+6. **File Writing**: Updated files written back to sandbox filesystem
+7. **Dependency Installation**: Babel packages installed if not present
+
+**Environment Integration**:
+- **Automatic Setup**: IDs injected during every new sandbox creation
+- **Zero Configuration**: No manual setup required - works automatically
+- **Safe Processing**: AST manipulation ensures code syntax remains valid
+- **Performance Optimized**: Efficient batch processing with minimal overhead
+
+**Dependencies**:
+- `@babel/parser` - JavaScript/JSX/TSX parsing
+- `@babel/traverse` - AST traversal and manipulation
+- `@babel/types` - AST node type definitions
+- `@babel/generator` - AST to source code conversion
 
 ## AI Chat System
 
@@ -251,6 +329,7 @@ This is a Next.js 15 application built with React 19 that implements a node-base
 - **Tailwind Integration**: Smart class replacement with conflict resolution and arbitrary value support
 - **Cross-origin Communication**: PostMessage API for seamless iframe-parent communication
 - **Auto SDK Integration**: Visual Editor SDK automatically included in Next.js sandbox projects
+- **AST-Based Targeting**: Uses unique `data-visual-id` attributes for precise element identification
 
 **Technical Architecture**:
 - **Visual Editor SDK** (`src/services/visual-editor-sdk.js`): Client-side script injected into Next.js projects for element selection and manipulation
@@ -317,6 +396,7 @@ This is a Next.js 15 application built with React 19 that implements a node-base
 **API Endpoints**:
 - `POST /api/projects/[id]/sandbox/files/modify` - Update JSX/TSX files with new className attributes
 - `GET /api/projects/[id]/sandbox/files/modify?path=<path>` - List JSX/TSX files in sandbox for modification
+- `POST /api/projects/[id]/sandbox/inject-ids` - Inject unique AST-based IDs into JSX/TSX files for element targeting
 
 **Dependencies**:
 - Existing Daytona SDK for sandbox file operations
