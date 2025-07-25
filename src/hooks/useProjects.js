@@ -13,7 +13,9 @@ export const useProjects = () => {
   const fetchProjects = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/projects');
+      const response = await fetch('/api/projects', {
+        credentials: 'include'
+      });
       if (!response.ok) {
         throw new Error('Failed to fetch projects');
       }
@@ -46,8 +48,6 @@ export const useProjects = () => {
     const projectsWithCreatingStatus = projects.filter(p => p.sandboxStatus === 'creating');
     const projectsWithSandboxId = projects.filter(p => p.sandboxId);
     
-    
-    // For debugging: poll if ANY projects have sandboxId (not just creating)
     const shouldPoll = projectsWithCreatingStatus.length > 0 || projectsWithSandboxId.length > 0;
     
     if (shouldPoll) {
@@ -55,19 +55,23 @@ export const useProjects = () => {
       if (!pollingIntervalRef.current) {
         pollingIntervalRef.current = setInterval(async () => {
           try {
-            const response = await fetch('/api/projects');
+            const response = await fetch('/api/projects', {
+              credentials: 'include'
+            });
             if (response.ok) {
               const data = await response.json();
               
-              // Also check individual sandbox statuses via Daytona SDK and update project status
+              // Only check Daytona API status for projects with "started" database status
               const updatedProjects = [...data];
-              for (const project of data.filter(p => p.sandboxId)) {
+              for (const project of data.filter(p => p.sandboxId && p.sandboxStatus === 'started')) {
                 try {
-                  const statusResponse = await fetch(`/api/projects/${project.id}/sandbox/status`);
+                  const statusResponse = await fetch(`/api/projects/${project.id}/sandbox/status`, {
+                    credentials: 'include'
+                  });
                   if (statusResponse.ok) {
                     const statusData = await statusResponse.json();
                     
-                    // Update the project's sandbox status with live status
+                    // Update the project's sandbox status with live Daytona status
                     const projectIndex = updatedProjects.findIndex(p => p.id === project.id);
                     if (projectIndex !== -1) {
                       updatedProjects[projectIndex].sandboxStatus = statusData.status;
@@ -77,7 +81,7 @@ export const useProjects = () => {
                     }
                   }
                 } catch (error) {
-                  console.error(`❌ Error checking sandbox status for project ${project.id}:`, error);
+                  console.error(`Error checking sandbox status for project ${project.id}:`, error);
                 }
               }
               
@@ -92,10 +96,10 @@ export const useProjects = () => {
                 pollingIntervalRef.current = null;
               }
             } else {
-              console.error('❌ API request failed:', response.status, response.statusText);
+              console.error('API request failed:', response.status, response.statusText);
             }
           } catch (error) {
-            console.error('❌ Error polling for project updates:', error);
+            console.error('Error polling for project updates:', error);
           }
         }, 5000); // Poll every 5 seconds for better debugging
       }
@@ -135,6 +139,7 @@ export const useProjects = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(updatedProject),
+        credentials: 'include'
       });
 
       if (!response.ok) {
@@ -161,6 +166,7 @@ export const useProjects = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(projectData),
+        credentials: 'include'
       });
 
       if (!response.ok) {
@@ -188,6 +194,7 @@ export const useProjects = () => {
 
       const response = await fetch(`/api/projects/${projectId}`, {
         method: 'DELETE',
+        credentials: 'include'
       });
 
       if (!response.ok) {
@@ -207,10 +214,6 @@ export const useProjects = () => {
 
       const result = await response.json();
       
-      // Log sandbox deletion status if available
-      if (result.sandboxMessage) {
-        console.log('Sandbox cleanup:', result.sandboxMessage);
-      }
 
       // Remove from deleting set after successful deletion
       setDeletingProjects(prev => {

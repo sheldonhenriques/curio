@@ -1,7 +1,12 @@
 import sessionCleanupService from '@/lib/sessionCleanup';
+import { requireAdmin } from '@/utils/auth/admin';
 
 export async function GET(request) {
   try {
+    // Check admin authorization
+    const authError = await requireAdmin(request);
+    if (authError) return authError;
+    
     const status = sessionCleanupService.getStatus();
     
     return Response.json({
@@ -20,6 +25,10 @@ export async function GET(request) {
 
 export async function POST(request) {
   try {
+    // Check admin authorization
+    const authError = await requireAdmin(request);
+    if (authError) return authError;
+    
     const { action } = await request.json();
     
     switch (action) {

@@ -1,14 +1,19 @@
 import { NextResponse } from 'next/server';
-import connectToDatabase from '@/lib/mongodb';
-import Project from '@/models/Project';
+import { createClient } from '@/utils/supabase/server';
 import { startSandbox } from '@/services/sandboxService';
 
-const findProjectWithSandbox = async (id) => {
-  const project = await Project.findOne({ id: parseInt(id) });
-  if (!project) {
+const findProjectWithSandbox = async (supabase, id, userId) => {
+  const { data: project, error } = await supabase
+    .from('projects')
+    .select('*')
+    .eq('id', parseInt(id))
+    .eq('user_id', userId)
+    .single();
+
+  if (error || !project) {
     throw new Error('Project not found');
   }
-  if (!project.sandboxId) {
+  if (!project.sandbox_id) {
     throw new Error('No sandbox associated with this project');
   }
   return project;
@@ -16,15 +21,24 @@ const findProjectWithSandbox = async (id) => {
 
 export async function POST(_request, { params }) {
   try {
-    await connectToDatabase();
+    const supabase = await createClient();
     const { id } = await params;
     
-    const project = await findProjectWithSandbox(id);
-    const result = await startSandbox(project.sandboxId);
+    // Check if user is authenticated
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
+    const project = await findProjectWithSandbox(supabase, id, user.id);
+    const result = await startSandbox(project.sandbox_id);
     
     return NextResponse.json({
       success: true,
-      sandboxId: project.sandboxId,
+      sandboxId: project.sandbox_id,
       ...result
     });
     

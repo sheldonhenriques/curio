@@ -96,7 +96,6 @@ class ASTIdInjector {
     } else if (node.openingFragment) {
       // For fragments, we'll convert to a div with the ID
       // This is necessary because fragments can't have attributes
-      console.log(`Converting fragment to div in ${componentName}`);
     }
   }
 

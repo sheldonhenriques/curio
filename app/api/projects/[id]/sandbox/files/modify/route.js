@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { Daytona } from "@daytonaio/sdk"
-import connectToDatabase from '@/lib/mongodb'
-import Project from '@/models/Project'
+import { createClient } from '@/utils/supabase/server'
 
 const getDaytonaClient = () => {
   if (!process.env.DAYTONA_API_KEY) {
@@ -31,17 +30,32 @@ export async function POST(request, { params }) {
     }
 
     // Get the project to find the actual sandbox ID
-    await connectToDatabase()
-    const project = await Project.findOne({ id: parseInt(id) })
+    const supabase = await createClient()
     
-    if (!project) {
+    // Check if user is authenticated
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    if (userError || !user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+    
+    const { data: project, error: fetchError } = await supabase
+      .from('projects')
+      .select('*')
+      .eq('id', parseInt(id))
+      .eq('user_id', user.id)
+      .single()
+    
+    if (fetchError || !project) {
       return NextResponse.json(
         { error: 'Project not found' },
         { status: 404 }
       )
     }
     
-    if (!project.sandboxId) {
+    if (!project.sandbox_id) {
       return NextResponse.json(
         { error: 'No sandbox associated with this project' },
         { status: 400 }
@@ -50,7 +64,7 @@ export async function POST(request, { params }) {
 
     const daytona = getDaytonaClient()
     const sandboxes = await daytona.list()
-    const sandbox = sandboxes.find(s => s.id === project.sandboxId)
+    const sandbox = sandboxes.find(s => s.id === project.sandbox_id)
 
     if (!sandbox) {
       return NextResponse.json(
@@ -240,7 +254,6 @@ function updateTextContentById(content, visualId, newText) {
           // Found text after nested elements - this is likely the main text content
           const beforeText = afterElementsMatch[1];
           const originalText = afterElementsMatch[2].trim();
-          console.log(`Replacing trailing text "${originalText}" with "${sanitizedText}"`);
           
           // Replace just the trailing text part, preserving whitespace structure
           const updatedInner = `${beforeText}\n            ${sanitizedText}\n          `;
@@ -255,7 +268,6 @@ function updateTextContentById(content, visualId, newText) {
           const leadingSpace = textWithExpressionMatch[1];
           const originalText = textWithExpressionMatch[2].trim();
           const afterExpression = textWithExpressionMatch[3];
-          console.log(`Replacing text before JSX expression "${originalText}" with "${sanitizedText}"`);
           
           // Replace the initial text but keep the JSX expression and nested elements
           const updatedInner = `${leadingSpace}${sanitizedText}${afterExpression}`;
@@ -285,7 +297,6 @@ function updateTextContentById(content, visualId, newText) {
         });
         
         if (mainTextSegment && mainTextIndex !== -1) {
-          console.log(`Replacing main text segment "${mainTextSegment}" with "${sanitizedText}"`);
           segments[mainTextIndex] = segments[mainTextIndex].replace(mainTextSegment, sanitizedText);
           const updatedInner = segments.join('');
           wasUpdated = true;
@@ -310,14 +321,12 @@ function updateTextContentById(content, visualId, newText) {
         }
         
         if (hasPreservableElements) {
-          console.log(`Preserving nested elements, but replacing with simplified structure`);
           // For now, just replace with the new text - this is the safest approach
           wasUpdated = true;
           return `${openTag}${sanitizedText}${closeTag}`;
         }
         
         // Fallback: replace entire content
-        console.log(`Using fallback: replacing entire content with "${sanitizedText}"`);
         wasUpdated = true;
         return `${openTag}${sanitizedText}${closeTag}`;
         

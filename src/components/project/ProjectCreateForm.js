@@ -56,11 +56,6 @@ export const ProjectCreateForm = ({ onClose, onSubmit }) => {
         starred: false,
         progress: 0,
         updatedAt: 'just now',
-        sections: [
-          { name: 'Planning', status: 'Not Started' },
-          { name: 'Development', status: 'Not Started' },
-          { name: 'Testing', status: 'Not Started' }
-        ]
       };
 
       const result = await onSubmit(projectData);

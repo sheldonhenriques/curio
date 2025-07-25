@@ -1,9 +1,14 @@
-import connectToDatabase from '@/lib/mongodb';
-import ChatSession from '@/models/ChatSession';
+import { createClient } from '@/utils/supabase/server';
 
 export async function GET(request) {
   try {
-    await connectToDatabase();
+    const supabase = await createClient();
+    
+    // Check if user is authenticated
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     
     const { searchParams } = new URL(request.url);
     const nodeId = searchParams.get('nodeId');
@@ -13,16 +18,49 @@ export async function GET(request) {
       return Response.json({ error: 'Node ID is required' }, { status: 400 });
     }
     
-    let query = { nodeId, isActive: true };
-    if (projectId) {
-      query.projectId = projectId;
-    }
-    
-    const sessions = await ChatSession.find(query)
-      .sort({ updatedAt: -1 })
+    let query = supabase
+      .from('chat_sessions')
+      .select(`
+        *,
+        messages (
+          id,
+          message_id,
+          type,
+          content,
+          metadata,
+          timestamp
+        )
+      `)
+      .eq('user_id', user.id)
+      .eq('node_id', nodeId)
+      .eq('is_active', true)
+      .order('updated_at', { ascending: false })
       .limit(10);
     
-    return Response.json({ sessions });
+    if (projectId) {
+      query = query.eq('project_id', parseInt(projectId));
+    }
+    
+    const { data: sessions, error } = await query;
+    
+    if (error) {
+      console.error('Error fetching chat sessions:', error);
+      return Response.json({ error: 'Internal server error' }, { status: 500 });
+    }
+    
+    // Transform sessions to match expected format
+    const transformedSessions = sessions.map(session => ({
+      sessionId: session.session_id,
+      nodeId: session.node_id,
+      projectId: session.project_id,
+      createdAt: session.created_at,
+      updatedAt: session.updated_at,
+      isActive: session.is_active,
+      messages: session.messages || [],
+      messageCount: session.messages?.length || 0
+    }));
+    
+    return Response.json({ sessions: transformedSessions });
     
   } catch (error) {
     console.error('Error fetching chat sessions:', error);
@@ -32,7 +70,13 @@ export async function GET(request) {
 
 export async function POST(request) {
   try {
-    await connectToDatabase();
+    const supabase = await createClient();
+    
+    // Check if user is authenticated
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     
     const { sessionId, nodeId, projectId } = await request.json();
     
@@ -43,64 +87,88 @@ export async function POST(request) {
     }
     
     // Check if session already exists
-    const existingSession = await ChatSession.findOne({ sessionId });
-    if (existingSession) {
+    const { data: existingSession, error: fetchError } = await supabase
+      .from('chat_sessions')
+      .select(`
+        *,
+        messages (count)
+      `)
+      .eq('session_id', sessionId)
+      .eq('user_id', user.id)
+      .single();
+    
+    if (existingSession && !fetchError) {
       // If session exists and is active, return it
-      if (existingSession.isActive) {
+      if (existingSession.is_active) {
         return Response.json({ 
           message: 'Session already exists',
           session: {
-            sessionId: existingSession.sessionId,
-            nodeId: existingSession.nodeId,
-            projectId: existingSession.projectId,
-            createdAt: existingSession.createdAt,
-            updatedAt: existingSession.updatedAt,
-            isActive: existingSession.isActive,
-            messageCount: existingSession.messages.length
+            sessionId: existingSession.session_id,
+            nodeId: existingSession.node_id,
+            projectId: existingSession.project_id,
+            createdAt: existingSession.created_at,
+            updatedAt: existingSession.updated_at,
+            isActive: existingSession.is_active,
+            messageCount: existingSession.messages?.[0]?.count || 0
           }
         }, { status: 200 });
       } else {
         // Reactivate existing session
-        existingSession.isActive = true;
-        existingSession.updatedAt = new Date();
-        await existingSession.save();
+        const { data: reactivatedSession, error: updateError } = await supabase
+          .from('chat_sessions')
+          .update({ is_active: true })
+          .eq('id', existingSession.id)
+          .select()
+          .single();
+        
+        if (updateError) {
+          console.error('Error reactivating session:', updateError);
+          return Response.json({ error: 'Internal server error' }, { status: 500 });
+        }
         
         return Response.json({ 
           message: 'Session reactivated',
           session: {
-            sessionId: existingSession.sessionId,
-            nodeId: existingSession.nodeId,
-            projectId: existingSession.projectId,
-            createdAt: existingSession.createdAt,
-            updatedAt: existingSession.updatedAt,
-            isActive: existingSession.isActive,
-            messageCount: existingSession.messages.length
+            sessionId: reactivatedSession.session_id,
+            nodeId: reactivatedSession.node_id,
+            projectId: reactivatedSession.project_id,
+            createdAt: reactivatedSession.created_at,
+            updatedAt: reactivatedSession.updated_at,
+            isActive: reactivatedSession.is_active,
+            messageCount: existingSession.messages?.[0]?.count || 0
           }
         }, { status: 200 });
       }
     }
     
     // Create new session
-    const session = new ChatSession({
-      sessionId,
-      nodeId,
-      projectId,
-      messages: [],
-      isActive: true
-    });
+    const { data: session, error: createError } = await supabase
+      .from('chat_sessions')
+      .insert([{
+        session_id: sessionId,
+        user_id: user.id,
+        node_id: nodeId,
+        project_id: parseInt(projectId),
+        is_active: true
+      }])
+      .select()
+      .single();
     
-    await session.save();
+    if (createError) {
+      console.error('Error creating chat session:', createError);
+      return Response.json({ error: 'Internal server error' }, { status: 500 });
+    }
     
     return Response.json({ 
       message: 'Session created successfully',
       session: {
-        sessionId: session.sessionId,
-        nodeId: session.nodeId,
-        projectId: session.projectId,
-        createdAt: session.createdAt,
-        updatedAt: session.updatedAt,
-        isActive: session.isActive,
-        messageCount: session.messages.length
+        sessionId: session.session_id,
+        nodeId: session.node_id,
+        projectId: session.project_id,
+        createdAt: session.created_at,
+        updatedAt: session.updated_at,
+        isActive: session.is_active,
+        messageCount: 0
       }
     }, { status: 201 });
     
@@ -112,7 +180,13 @@ export async function POST(request) {
 
 export async function DELETE(request) {
   try {
-    await connectToDatabase();
+    const supabase = await createClient();
+    
+    // Check if user is authenticated
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     
     const { searchParams } = new URL(request.url);
     const nodeId = searchParams.get('nodeId');
@@ -122,14 +196,22 @@ export async function DELETE(request) {
     }
     
     // Deactivate all sessions for this node
-    const result = await ChatSession.updateMany(
-      { nodeId, isActive: true },
-      { isActive: false, updatedAt: new Date() }
-    );
+    const { data, error } = await supabase
+      .from('chat_sessions')
+      .update({ is_active: false })
+      .eq('node_id', nodeId)
+      .eq('user_id', user.id)
+      .eq('is_active', true)
+      .select('id');
+    
+    if (error) {
+      console.error('Error clearing chat sessions:', error);
+      return Response.json({ error: 'Internal server error' }, { status: 500 });
+    }
     
     return Response.json({ 
       message: 'Sessions cleared successfully',
-      modifiedCount: result.modifiedCount
+      modifiedCount: data?.length || 0
     });
     
   } catch (error) {

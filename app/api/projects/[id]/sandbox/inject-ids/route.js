@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { Daytona } from '@daytonaio/sdk';
 import ASTIdInjector from '../../../../../../src/services/astIdInjector.js';
+import { getProjectByIdInternal } from '../../../../../../src/utils/supabase/service.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -9,9 +10,12 @@ export async function POST(request, { params }) {
     const { id } = params;
     const client = new Daytona({ apiKey: process.env.DAYTONA_API_KEY });
     
-    // Get project to find sandbox ID
-    const project = await fetch(`${request.nextUrl.origin}/api/projects/${id}`);
-    const projectData = await project.json();
+    // Get project to find sandbox ID using service client
+    try {
+      var projectData = await getProjectByIdInternal(id);
+    } catch (error) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    }
     
     if (!projectData.sandboxId) {
       return NextResponse.json({ error: 'No sandbox found for this project' }, { status: 404 });
@@ -211,7 +215,6 @@ export async function POST(request, { params }) {
       try {
         require('@babel/parser');
       } catch (e) {
-        console.log('Installing AST dependencies...');
         execSync('npm install @babel/parser @babel/traverse @babel/types @babel/generator', { 
           cwd: '/workspace',
           stdio: 'inherit' 
@@ -221,7 +224,6 @@ export async function POST(request, { params }) {
       // Process the workspace
       const injector = new ASTIdInjector();
       injector.processDirectory('/workspace/project').then(results => {
-        console.log(JSON.stringify(results, null, 2));
       }).catch(error => {
         console.error('Error:', error);
         process.exit(1);
@@ -243,7 +245,6 @@ export async function POST(request, { params }) {
         processedFiles = JSON.parse(jsonMatch[0]);
       }
     } catch (e) {
-      console.log('Could not parse injection results:', e);
     }
 
     return NextResponse.json({

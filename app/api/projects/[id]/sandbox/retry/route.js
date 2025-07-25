@@ -1,15 +1,30 @@
 import { NextResponse } from 'next/server';
-import connectToDatabase from '@/lib/mongodb';
-import Project from '@/models/Project';
+import { createClient } from '@/utils/supabase/server';
 import { createSandbox } from '@/services/sandboxService';
 
 export async function POST(_request, { params }) {
   try {
-    await connectToDatabase();
+    const supabase = await createClient();
     const { id } = await params;
     
-    const project = await Project.findOne({ id: parseInt(id) });
-    if (!project) {
+    // Check if user is authenticated
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
+    // Get the project
+    const { data: project, error: fetchError } = await supabase
+      .from('projects')
+      .select('*')
+      .eq('id', parseInt(id))
+      .eq('user_id', user.id)
+      .single();
+
+    if (fetchError || !project) {
       return NextResponse.json(
         { error: 'Project not found' },
         { status: 404 }
@@ -26,17 +41,22 @@ export async function POST(_request, { params }) {
       sandboxError = error.message;
     }
     
-    const updatedProject = await Project.findOneAndUpdate(
-      { id: parseInt(id) },
-      {
-        sandboxId: sandboxData?.sandboxId || null,
-        sandboxStatus: sandboxData ? 'created' : 'failed',
-        sandboxError: sandboxError,
-        updatedAt: 'just now',
-        updatedAtTimestamp: new Date()
-      },
-      { new: true }
-    );
+    // Update the project
+    const { data: updatedProject, error: updateError } = await supabase
+      .from('projects')
+      .update({
+        sandbox_id: sandboxData?.sandboxId || null,
+        sandbox_status: sandboxData ? 'created' : 'failed',
+        sandbox_error: sandboxError,
+      })
+      .eq('id', parseInt(id))
+      .eq('user_id', user.id)
+      .select()
+      .single();
+
+    if (updateError) {
+      throw updateError;
+    }
     
     if (sandboxError) {
       return NextResponse.json({

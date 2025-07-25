@@ -12,6 +12,155 @@ const getDaytonaClient = () => {
   });
 };
 
+// New function that returns sandbox ID immediately and setup promise separately
+export const createSandboxWithId = async (projectName, statusCallback) => {
+  const daytona = getDaytonaClient();
+  
+  try {
+    // Create the sandbox - this is fast and returns immediately
+    const sandbox = await daytona.create({
+      public: true,
+      image: "node:20",
+      name: `curio-${projectName.toLowerCase().replace(/\s+/g, '-')}`,
+      envVars: {
+        ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY
+      },
+    });
+
+    const sandboxId = sandbox.id;
+
+    // Create a promise for the remaining setup work
+    const setupPromise = performSandboxSetup(sandbox, projectName, statusCallback);
+
+    return {
+      sandboxId,
+      setupPromise
+    };
+  } catch (error) {
+    console.error('❌ Error creating sandbox:', error);
+    throw error;
+  }
+};
+
+// Separate function for the time-consuming setup work
+const performSandboxSetup = async (sandbox, projectName, statusCallback) => {
+  try {
+    const rootDir = await sandbox.getUserRootDir();
+    const projectDir = `${rootDir}/project`;
+    
+    if (statusCallback) {
+      await statusCallback('setting_up_nextjs');
+      await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
+    }
+    
+    const createNextApp = await sandbox.process.executeCommand(
+      `npx create-next-app@latest project --typescript --tailwind --eslint --app --src-dir --import-alias "@/*" --yes`,
+      rootDir,
+      undefined,
+      1200
+    );
+
+    if (createNextApp.exitCode !== 0) {
+      throw new Error(`Failed to create Next.js app: ${createNextApp.result}`);
+    }
+
+    if (statusCallback) {
+      await statusCallback('installing_claude_sdk');
+      await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
+    }
+
+    // Install Claude Code SDK for AI chat functionality
+    const installClaudeCode = await sandbox.process.executeCommand(
+      `npm install -g @anthropic-ai/claude-code@latest`,
+      projectDir,
+      undefined,
+      240
+    );
+
+    if (installClaudeCode.exitCode !== 0) {
+      console.warn(`⚠️  Claude Code SDK installation failed for ${sandbox.id}: ${installClaudeCode.result}`);
+    }
+
+    // Continue with the rest of the setup...
+    return await continueSetup(sandbox, projectDir, statusCallback);
+  } catch (error) {
+    console.error(`❌ Setup failed for sandbox ${sandbox.id}:`, error);
+    throw error;
+  }
+};
+
+// Function to continue with the remaining setup after Next.js app creation
+const continueSetup = async (sandbox, projectDir, statusCallback) => {
+  try {
+    if (statusCallback) {
+      await statusCallback('configuring_editor');
+      await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
+    }
+    
+    // Add Visual Editor SDK to the Next.js project
+    await addVisualEditorSDK(sandbox, projectDir);
+    
+    if (statusCallback) {
+      await statusCallback('installing_dependencies');
+      await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
+    }
+    
+    // Install AST dependencies for ID injection
+    const installASTDeps = await sandbox.process.executeCommand(
+      `npm install @babel/parser @babel/traverse @babel/types @babel/generator`,
+      projectDir,
+      undefined,
+      120
+    );
+
+    if (installASTDeps.exitCode !== 0) {
+      console.warn(`⚠️  Failed to install AST dependencies for ${sandbox.id}: ${installASTDeps.result}`);
+    }
+    
+    if (statusCallback) {
+      await statusCallback('optimizing_project');
+      await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
+    }
+    
+    // Inject AST IDs into JSX/TSX files
+    await injectASTIds(sandbox, projectDir);
+    
+    if (statusCallback) {
+      await statusCallback('starting_server');
+      await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
+    }
+    
+    // Start the development server
+    await sandbox.process.executeCommand(
+      `nohup npm run dev > dev-server.log 2>&1 &`,
+      projectDir,
+      { PORT: "3000" },
+      60
+    );
+
+    // Wait for server to start
+    await new Promise((resolve) => setTimeout(resolve, 10000));
+    
+    if (statusCallback) {
+      await statusCallback('finalizing');
+      await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
+    }
+    
+    const preview = await sandbox.getPreviewLink(3000);
+
+    return {
+      sandboxId: sandbox.id,
+      previewUrl: preview.url,
+      projectDir: projectDir,
+      status: 'ready'
+    };
+  } catch (error) {
+    console.error(`❌ Setup failed for sandbox ${sandbox.id}:`, error);
+    throw error;
+  }
+};
+
+// Continue with the original createSandbox function for backward compatibility
 export const createSandbox = async (projectName) => {
   const daytona = getDaytonaClient();
   

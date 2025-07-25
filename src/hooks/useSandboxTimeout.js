@@ -7,7 +7,8 @@ export const useSandboxTimeout = (projectId, sandboxStatus, timeoutMinutes = 10)
   const stopSandbox = useCallback(async () => {
     try {
       const response = await fetch(`/api/projects/${projectId}/sandbox/stop`, {
-        method: 'POST'
+        method: 'POST',
+        credentials: 'include'
       });
       
       if (!response.ok) {

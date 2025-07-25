@@ -174,25 +174,44 @@ export default function AIChatNode({ id, data, selected, ...props }) {
     const messagesEndRef = useRef(null)
     const inputRef = useRef(null)
     const { isConnected, connectionError, sendMessage, subscribe, reconnect } = useClaudeWebSocket()
-    const { session, createSession, clearSession, getMessages, getSessionId, hasSession, updateSession } = useChatSession(id, data?.projectId)
+    const { session, createSession, clearSession, getMessages, getSessionId, hasSession, saveMessage, loadMessages } = useChatSession(id, data?.projectId)
 
     // Load messages from session when session changes (only on initial load)
     useEffect(() => {
         if (session && messages.length === 0) {
-            // Only load session messages when we have no current messages (initial load)
-            const sessionMessages = getMessages().map(msg => ({
-                id: msg.id,
-                type: msg.type,
-                content: msg.content,
-                timestamp: new Date(msg.timestamp),
-                metadata: msg.metadata
-            }))
-            if (sessionMessages.length > 0) {
-                setMessages(sessionMessages)
-            }
+            // Load messages from the messages API
+            const loadSessionMessages = async () => {
+                try {
+                    const sessionMessages = await loadMessages();
+                    if (sessionMessages.length > 0) {
+                        const formattedMessages = sessionMessages.map(msg => ({
+                            id: msg.message_id,
+                            type: msg.type,
+                            content: msg.content,
+                            timestamp: new Date(msg.timestamp),
+                            metadata: msg.metadata || {}
+                        }));
+                        setMessages(formattedMessages);
+                    }
+                } catch (error) {
+                    console.error('Failed to load session messages:', error);
+                    // Fallback to embedded messages if API fails
+                    const fallbackMessages = getMessages().map(msg => ({
+                        id: msg.id,
+                        type: msg.type,
+                        content: msg.content,
+                        timestamp: new Date(msg.timestamp),
+                        metadata: msg.metadata
+                    }));
+                    if (fallbackMessages.length > 0) {
+                        setMessages(fallbackMessages);
+                    }
+                }
+            };
+            loadSessionMessages();
         }
         // Don't overwrite existing messages when session is created mid-conversation
-    }, [session, getMessages, messages.length])
+    }, [session, loadMessages, getMessages, messages.length])
 
     // Auto-scroll to bottom when new messages arrive
     useEffect(() => {
@@ -207,7 +226,7 @@ export default function AIChatNode({ id, data, selected, ...props }) {
         const sessionId = getSessionId()
         if (sessionId && session) {
             try {
-                await updateSession(sessionId, {
+                await saveMessage(sessionId, {
                     id: message.id,
                     type: message.type,
                     content: message.content,
@@ -218,7 +237,7 @@ export default function AIChatNode({ id, data, selected, ...props }) {
                 console.error('Failed to save message to session:', error)
             }
         }
-    }, [getSessionId, session, updateSession])
+    }, [getSessionId, session, saveMessage])
 
     // WebSocket message handler
     useEffect(() => {
@@ -368,7 +387,7 @@ export default function AIChatNode({ id, data, selected, ...props }) {
         })
 
         return unsubscribe
-    }, [isConnected, subscribe, saveMessageToSession])
+    }, [isConnected, subscribe, saveMessageToSession, createSession, hasSession])
 
     // Update connection status
     useEffect(() => {

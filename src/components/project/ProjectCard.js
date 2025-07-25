@@ -4,6 +4,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
 import { useRouter } from 'next/navigation';
 import Dropdown, { DropdownItem } from '@/components/ui/Dropdown';
+import { formatUpdatedAt } from '@/utils/dateFormatter';
 
 export const ProjectCard = ({ project, onToggleStar, onDelete }) => {
   const colorClass = COLOR_THEMES[project.color]?.card || 'border-t-gray-500 bg-gray-50';
@@ -93,7 +94,7 @@ export const ProjectCard = ({ project, onToggleStar, onDelete }) => {
           {project.sandboxStatus === 'started' && (
             <>
               <CheckCircle className="w-4 h-4 text-green-500" />
-              <span className="text-sm text-green-600 dark:text-green-400">Sandbox running</span>
+              <span className="text-sm text-green-600 dark:text-green-400">Ready to use</span>
             </>
           )}
           {project.sandboxStatus === 'stopped' && (
@@ -104,8 +105,50 @@ export const ProjectCard = ({ project, onToggleStar, onDelete }) => {
           )}
           {project.sandboxStatus === 'created' && (
             <>
-              <CheckCircle className="w-4 h-4 text-green-500" />
-              <span className="text-sm text-green-600 dark:text-green-400">Sandbox ready</span>
+              <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+              <span className="text-sm text-blue-600 dark:text-blue-400">Initializing project...</span>
+            </>
+          )}
+          {project.sandboxStatus === 'setting_up_nextjs' && (
+            <>
+              <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+              <span className="text-sm text-blue-600 dark:text-blue-400">Setting up Next.js...</span>
+            </>
+          )}
+          {project.sandboxStatus === 'installing_claude_sdk' && (
+            <>
+              <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+              <span className="text-sm text-blue-600 dark:text-blue-400">Installing AI tools...</span>
+            </>
+          )}
+          {project.sandboxStatus === 'configuring_editor' && (
+            <>
+              <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+              <span className="text-sm text-blue-600 dark:text-blue-400">Configuring visual editor...</span>
+            </>
+          )}
+          {project.sandboxStatus === 'installing_dependencies' && (
+            <>
+              <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+              <span className="text-sm text-blue-600 dark:text-blue-400">Installing dependencies...</span>
+            </>
+          )}
+          {project.sandboxStatus === 'optimizing_project' && (
+            <>
+              <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+              <span className="text-sm text-blue-600 dark:text-blue-400">Optimizing project...</span>
+            </>
+          )}
+          {project.sandboxStatus === 'starting_server' && (
+            <>
+              <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+              <span className="text-sm text-blue-600 dark:text-blue-400">Starting dev server...</span>
+            </>
+          )}
+          {project.sandboxStatus === 'finalizing' && (
+            <>
+              <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+              <span className="text-sm text-blue-600 dark:text-blue-400">Finalizing setup...</span>
             </>
           )}
           {(project.sandboxStatus === 'failed' || project.sandboxStatus === 'error' || project.sandboxStatus === 'not_found') && (
@@ -127,7 +170,7 @@ export const ProjectCard = ({ project, onToggleStar, onDelete }) => {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1 text-sm text-gray-500  dark:text-gray-300">
           <Clock size={14} />
-          <span>Updated {project.updatedAt}</span>
+          <span>Updated {formatUpdatedAt(project.updated_at || project.updatedAt)}</span>
         </div>
       </div>
 

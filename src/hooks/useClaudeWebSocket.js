@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 
 export function useClaudeWebSocket() {
   const [isConnected, setIsConnected] = useState(false);
@@ -7,7 +7,7 @@ export function useClaudeWebSocket() {
   const reconnectTimeoutRef = useRef(null);
   const messageCallbacksRef = useRef(new Map());
 
-  const connect = () => {
+  const connect = useCallback(() => {
     try {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${protocol}//${window.location.host}/api/claude-ws`;
@@ -62,7 +62,7 @@ export function useClaudeWebSocket() {
       console.error('[WS] Error creating WebSocket:', error);
       setConnectionError('Failed to create WebSocket connection');
     }
-  };
+  }, []);
 
   const disconnect = () => {
     if (reconnectTimeoutRef.current) {
@@ -97,7 +97,7 @@ export function useClaudeWebSocket() {
   };
 
   const subscribe = (callback) => {
-    const id = Math.random().toString(36).substr(2, 9);
+    const id = Math.random().toString(36).substring(2, 11);
     messageCallbacksRef.current.set(id, callback);
     
     // Return unsubscribe function
@@ -112,7 +112,7 @@ export function useClaudeWebSocket() {
     return () => {
       disconnect();
     };
-  }, []);
+  }, [connect]);
 
   return {
     isConnected,
