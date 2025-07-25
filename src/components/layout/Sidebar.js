@@ -1,7 +1,7 @@
 import { NAVIGATION_ITEMS } from '@/constants/navigation';
 import { useAuth } from '@/hooks/useAuth';
-import LogoutButton from '@/components/auth/LogoutButton';
 import { LogOut } from 'lucide-react';
+import Image from 'next/image';
 
 export const Sidebar = () => {
   const { user, loading, getInitials, getDisplayName } = useAuth();
@@ -9,9 +9,11 @@ export const Sidebar = () => {
     <div className="group fixed left-0 top-0 h-full w-16 hover:w-64 bg-white dark:bg-black border-r border-gray-200 dark:border-gray-700 p-4 transition-all duration-300 ease-in-out z-50">
       {/* Logo and Title */}
       <div className="flex items-center gap-2 justify-center group-hover:justify-start mb-6 transition-all duration-300">
-        <img
+        <Image
           src="/logo.svg"
           alt="Curio Logo"
+          width={32}
+          height={32}
           className="w-8 h-8 rounded transition-transform duration-300 flex-shrink-0"
         />
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap overflow-hidden">

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { Daytona } from '@daytonaio/sdk';
 import ASTIdInjector from '../../../../../../src/services/astIdInjector.js';
+import { getProjectByIdInternal } from '../../../../../../src/utils/supabase/service.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -9,9 +10,12 @@ export async function POST(request, { params }) {
     const { id } = params;
     const client = new Daytona({ apiKey: process.env.DAYTONA_API_KEY });
     
-    // Get project to find sandbox ID
-    const project = await fetch(`${request.nextUrl.origin}/api/projects/${id}`);
-    const projectData = await project.json();
+    // Get project to find sandbox ID using service client
+    try {
+      var projectData = await getProjectByIdInternal(id);
+    } catch (error) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    }
     
     if (!projectData.sandboxId) {
       return NextResponse.json({ error: 'No sandbox found for this project' }, { status: 404 });

@@ -13,7 +13,13 @@ export function useChatSession(nodeId, projectId) {
       setLoading(true);
       setError(null);
       
-      const response = await fetch(`/api/chat-sessions/${nodeId}`);
+      const url = projectId 
+        ? `/api/chat-sessions/${encodeURIComponent(nodeId)}?projectId=${projectId}`
+        : `/api/chat-sessions/${encodeURIComponent(nodeId)}`;
+      
+      const response = await fetch(url, {
+        credentials: 'include'
+      });
       
       if (!response.ok) {
         throw new Error('Failed to load session');
@@ -28,7 +34,7 @@ export function useChatSession(nodeId, projectId) {
     } finally {
       setLoading(false);
     }
-  }, [nodeId]);
+  }, [nodeId, projectId]);
 
   // Create a new session
   const createSession = useCallback(async (sessionId) => {
@@ -46,7 +52,8 @@ export function useChatSession(nodeId, projectId) {
           sessionId,
           nodeId,
           projectId
-        })
+        }),
+        credentials: 'include'
       });
       
       if (!response.ok) {
@@ -68,36 +75,46 @@ export function useChatSession(nodeId, projectId) {
     }
   }, [nodeId, projectId, loadSession]);
 
-  // Update session with new message
-  const updateSession = useCallback(async (sessionId, message) => {
-    if (!nodeId || !sessionId) return;
+  // Save message to session
+  const saveMessage = useCallback(async (sessionId, message) => {
+    if (!nodeId || !sessionId || !message) return;
     
     try {
       setError(null);
       
-      const response = await fetch(`/api/chat-sessions/${nodeId}`, {
-        method: 'PUT',
+      const response = await fetch(`/api/messages/${encodeURIComponent(sessionId)}`, {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          sessionId,
-          message
-        })
+          messageId: message.id.toString(),
+          type: message.type,
+          content: message.content,
+          metadata: message.metadata || {}
+        }),
+        credentials: 'include'
       });
       
       if (!response.ok) {
-        throw new Error('Failed to update session');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to save message');
       }
       
-      // Reload session to get updated data
-      await loadSession();
+      // Optionally reload session to update message count
+      // await loadSession();
       
     } catch (err) {
-      console.error('Error updating session:', err);
+      console.error('Error saving message:', err);
       setError(err.message);
     }
-  }, [nodeId, loadSession]);
+  }, [nodeId]);
+
+  // Update session with new message (deprecated - use saveMessage instead)
+  const updateSession = useCallback(async (sessionId, message) => {
+    console.warn('updateSession is deprecated, use saveMessage instead');
+    return saveMessage(sessionId, message);
+  }, [saveMessage]);
 
   // Clear session for this node
   const clearSession = useCallback(async () => {
@@ -106,8 +123,9 @@ export function useChatSession(nodeId, projectId) {
     try {
       setError(null);
       
-      const response = await fetch(`/api/chat-sessions/${nodeId}`, {
-        method: 'DELETE'
+      const response = await fetch(`/api/chat-sessions?nodeId=${encodeURIComponent(nodeId)}`, {
+        method: 'DELETE',
+        credentials: 'include'
       });
       
       if (!response.ok) {
@@ -122,15 +140,38 @@ export function useChatSession(nodeId, projectId) {
     }
   }, [nodeId]);
 
-  // Get session messages
-  const getMessages = useCallback(() => {
-    return session?.messages || [];
-  }, [session]);
-
   // Get session ID
   const getSessionId = useCallback(() => {
     return session?.sessionId || null;
   }, [session]);
+
+  // Get session messages (from embedded messages in session - for backwards compatibility)
+  const getMessages = useCallback(() => {
+    return session?.messages || [];
+  }, [session]);
+
+  // Load messages for the current session
+  const loadMessages = useCallback(async () => {
+    const sessionId = getSessionId();
+    if (!sessionId) return [];
+    
+    try {
+      const response = await fetch(`/api/messages/${encodeURIComponent(sessionId)}`, {
+        credentials: 'include'
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to load messages');
+      }
+      
+      const data = await response.json();
+      return data.messages || [];
+      
+    } catch (err) {
+      console.error('Error loading messages:', err);
+      return [];
+    }
+  }, [getSessionId]);
 
   // Check if session exists
   const hasSession = useCallback(() => {
@@ -149,8 +190,10 @@ export function useChatSession(nodeId, projectId) {
     loading,
     error,
     loadSession,
+    loadMessages,
     createSession,
-    updateSession,
+    saveMessage,
+    updateSession, // Deprecated - use saveMessage
     clearSession,
     getMessages,
     getSessionId,

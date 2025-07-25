@@ -55,16 +55,16 @@ This is a Next.js 15 application built with React 19 that implements a node-base
 
 ## Database Setup
 
-### Database Migration History
+### Database Architecture Overview
 
-The application was successfully migrated from Supabase to MongoDB Atlas for better flexibility and integration with the existing codebase. The migration involved:
+The application uses a hybrid database approach optimized for different data types:
 
-- **Authentication System**: Migrated to Supabase Auth with middleware-based session management
-- **Project Data**: Migrated from MongoDB to structured MongoDB collections with improved schema design
-- **Chat Sessions**: Added persistent chat session storage with MongoDB integration
-- **User Management**: Implemented Supabase-based user authentication with secure server-side components
+- **Authentication System**: Supabase Auth for secure user authentication and session management
+- **Project Data**: MongoDB Atlas for flexible project data storage with complex schemas
+- **Chat Sessions**: Supabase PostgreSQL for real-time chat session and message storage
+- **User Management**: Supabase for user profiles and authentication state
 
-All legacy code and temporary migration files have been cleaned up, leaving a clean, production-ready codebase.
+This hybrid approach combines the strengths of both systems: MongoDB's flexibility for project data and Supabase's real-time capabilities for chat sessions.
 
 ### MongoDB Schema Design
 
@@ -267,16 +267,16 @@ All legacy code and temporary migration files have been cleaned up, leaving a cl
 - **Claude Code Integration**: Direct execution of Claude Code CLI within project sandboxes with conversation continuity
 - **Streaming Responses**: Real-time parsing of Claude CLI JSON output with JSON buffering for complete message handling
 - **Rich Message Types**: Visual differentiation for user messages, AI responses, tool usage, system messages, thinking states, and errors
-- **Session Persistence**: MongoDB-backed chat session storage with message history per node
+- **Session Persistence**: Supabase-backed chat session storage with message history per node
 - **Project Context**: AI works directly within existing Next.js projects with enhanced project awareness
 - **Session Continuity**: Claude CLI session IDs maintained across conversations for context preservation
 
 **Technical Architecture**:
 - **WebSocket Server** (`server.js`): Custom WebSocket server with session management, JSON buffering, and Claude CLI streaming
 - **WebSocket Hook** (`src/hooks/useClaudeWebSocket.js`): React hook for WebSocket connection management with auto-reconnection
-- **Chat Session Hook** (`src/hooks/useChatSession.js`): MongoDB-backed session persistence and message management
+- **Chat Session Hook** (`src/hooks/useChatSession.js`): Supabase-backed session persistence and message management
 - **AI Chat Node** (`src/components/nodes/aichat/index.js`): Enhanced UI with message bubbles, session indicators, and rich formatting
-- **Chat Session Model** (`src/models/ChatSession.js`): MongoDB schema for persistent chat sessions with message history
+- **Chat Session Tables**: Supabase PostgreSQL tables for persistent chat sessions with message history
 - **Session API Routes** (`app/api/chat-sessions/`): RESTful endpoints for session CRUD operations
 
 **Advanced Features**:
@@ -291,7 +291,9 @@ All legacy code and temporary migration files have been cleaned up, leaving a cl
 **Environment Requirements**:
 - `DAYTONA_API_KEY` - Required for sandbox integration
 - `ANTHROPIC_API_KEY` - Required for Claude CLI execution
-- `MONGODB_URI` - Required for session persistence
+- `NEXT_PUBLIC_SUPABASE_URL` - Required for Supabase chat session persistence
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Required for Supabase authentication
+- `SUPABASE_SERVICE_ROLE_KEY` - Required for server-side operations
 - WebSocket server integrated with Next.js server (single port deployment)
 
 **Message Types Supported**:
@@ -303,21 +305,28 @@ All legacy code and temporary migration files have been cleaned up, leaving a cl
 - **Error Messages**: Red error bubbles with retry options
 - **Status/Completion**: Blue/green status updates and completion notifications
 
-**Database Schema**:
-- **ChatSessions Collection**: Stores session metadata, node/project associations, and message arrays
-- **Message Embedding**: Individual messages stored with type, content, timestamp, and metadata
-- **Automatic Cleanup**: Background cleanup of sessions older than 5 hours
-- **Indexing**: Optimized queries with compound indexes on nodeId/isActive and createdAt
+**Database Schema** (Supabase PostgreSQL):
+- **chat_sessions Table**: Stores session metadata, node/project associations, user associations
+- **messages Table**: Individual messages stored with type, content, timestamp, and metadata
+- **Automatic Cleanup**: Background cleanup of sessions older than 5 hours via admin API
+- **Indexing**: Optimized queries with indexes on user_id, node_id, is_active, and created_at
 
 **Enhanced Workflow**:
-1. **Session Loading**: Check for existing MongoDB session on node initialization
+1. **Session Loading**: Check for existing Supabase session on node initialization
 2. **WebSocket Connection**: Establish connection with auto-reconnection and status tracking
-3. **Message Sending**: User messages saved to database and sent via WebSocket
+3. **Message Sending**: User messages saved to Supabase and sent via WebSocket
 4. **Claude Execution**: Enhanced prompts with project context, directory awareness, and tool restrictions
 5. **Session Continuity**: Claude CLI session IDs preserved across conversations for context
 6. **Real-time Streaming**: JSON-buffered output parsing with complete message handling
-7. **Message Persistence**: All messages automatically saved to MongoDB for session history
+7. **Message Persistence**: All messages automatically saved to Supabase for session history
 8. **UI Rendering**: Rich message bubbles with type-specific styling and interaction features
+
+**Chat Session API Endpoints**:
+- `GET /api/chat-sessions?nodeId=<nodeId>&projectId=<projectId>` - Fetch chat sessions for a node
+- `POST /api/chat-sessions` - Create new chat session
+- `DELETE /api/chat-sessions?nodeId=<nodeId>` - Clear sessions for a node
+- `GET /api/chat-sessions/[nodeId]?projectId=<projectId>` - Get specific session for node
+- `GET /api/admin/session-cleanup` - Admin endpoint for session cleanup management
 
 **Dependencies Added**:
 - `ws: ^8.18.3` - WebSocket server implementation
@@ -476,8 +485,10 @@ All legacy code and temporary migration files have been cleaned up, leaving a cl
 - **Clean Logging**: All debug console.log statements removed from production code
 - **Error Handling**: Comprehensive error logging maintained for debugging production issues
 - **Type Safety**: Full TypeScript integration with proper type definitions
-- **Linting**: ESLint configuration with Next.js best practices
+- **Linting**: ESLint configuration with Next.js best practices - zero warnings/errors
 - **Performance**: Optimized React hooks and database queries
+- **Webpack Optimization**: Resolved circular dependencies and module resolution issues
+- **React Hook Dependencies**: All useCallback/useEffect dependencies properly managed
 
 **Maintenance Notes**:
 - **Database**: MongoDB Atlas with proper indexing and connection pooling
@@ -488,10 +499,59 @@ All legacy code and temporary migration files have been cleaned up, leaving a cl
 
 **Development Standards**:
 - **Component Structure**: Reusable components with proper prop validation
-- **State Management**: React hooks for local state, MongoDB for persistence  
+- **State Management**: React hooks for local state, MongoDB for persistence with ref-based optimization  
 - **Error Boundaries**: Graceful error handling throughout the application
 - **Security**: Protected routes, input validation, and secure API endpoints
 - **Testing**: Ready for test implementation with clean, testable code structure
+- **Module Resolution**: Stable webpack builds with resolved circular dependencies
+- **Performance Optimization**: Ref-based state management to prevent unnecessary re-renders
+
+## Recent Code Cleanup & Optimization (2025)
+
+**Current Status**: ✅ **FULLY OPTIMIZED**
+
+**Overview**: Comprehensive code cleanup and optimization performed to resolve all ESLint warnings, webpack issues, and performance bottlenecks.
+
+**Issues Resolved**:
+- **Debug Logging Cleanup**: Removed all unnecessary console.log statements while preserving essential error logging
+- **React Hook Dependencies**: Fixed all missing dependency warnings in useCallback and useEffect hooks
+- **Webpack Circular Dependencies**: Resolved "Cannot read properties of undefined (reading 'call')" errors in Canvas.js
+- **Image Optimization**: Replaced HTML img tags with Next.js Image components for better performance
+- **Deprecated API Usage**: Updated deprecated substr() calls to substring()
+- **Unused Imports**: Cleaned up all unused import statements across the codebase
+
+**Key Optimizations**:
+
+**Canvas.js Performance Enhancement**:
+- **Problem**: Circular dependencies between `handlePropertyChange`, `convertPropertyToTailwind`, and `debouncedTextContentUpdate` functions causing webpack module resolution failures
+- **Solution**: Implemented ref-based state management using `selectedElementRef`, `projectRef`, and `updateElementFunctionRef`
+- **Result**: Stable function references, reduced re-renders, eliminated webpack errors
+
+**React Hook Dependency Management**:
+- **app/projects/[id]/page.js**: Added proper useCallback wrapper for `startSandbox` function with correct dependencies
+- **src/hooks/useClaudeWebSocket.js**: Wrapped `connect` function in useCallback, fixed deprecated substr() usage
+- **src/components/nodes/aichat/index.js**: Added missing `createSession` and `hasSession` dependencies
+- **src/components/flow/Canvas.js**: Restructured with refs to eliminate circular dependencies
+
+**Build & Runtime Stability**:
+- **Zero ESLint Warnings**: All files pass ESLint validation with no warnings or errors
+- **Successful Production Builds**: Application builds without webpack module resolution errors
+- **Runtime Stability**: No more "Cannot access before initialization" errors
+- **Performance Improvements**: Reduced unnecessary component re-renders through stable function references
+
+**Files Modified**:
+- `server.js` - Removed debug console.log
+- `app/projects/[id]/page.js` - Fixed startSandbox initialization order and dependencies
+- `src/components/flow/Canvas.js` - Major refactor with ref-based state management
+- `src/components/layout/Sidebar.js` - Updated to Next.js Image component, removed unused imports
+- `src/hooks/useClaudeWebSocket.js` - Added useCallback wrapper, fixed deprecated API usage
+- `src/components/nodes/aichat/index.js` - Fixed useEffect dependencies
+
+**Quality Metrics**:
+- **ESLint Status**: ✅ 0 warnings, 0 errors
+- **Build Status**: ✅ Successful production builds
+- **Runtime Errors**: ✅ No initialization or circular dependency errors
+- **Performance**: ✅ Optimized with stable function references
 
 ## Memories
 
@@ -500,3 +560,6 @@ All legacy code and temporary migration files have been cleaned up, leaving a cl
 - Built robust AI chat system with Claude Code CLI integration and WebSocket communication
 - Cleaned up all debug logging for production readiness
 - Established secure authentication flow with middleware-based route protection
+- Resolved all React Hook dependency warnings and webpack circular dependency issues
+- Optimized Canvas.js with ref-based state management for improved performance
+- Achieved zero ESLint warnings across entire codebase

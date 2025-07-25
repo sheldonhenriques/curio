@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { deleteSandbox } from '@/services/sandboxService';
 
-export async function GET(_request, { params }) {
+export async function GET(request, { params }) {
   try {
     const supabase = await createClient();
     const { id } = await params;

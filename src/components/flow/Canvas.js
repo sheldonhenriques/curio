@@ -94,9 +94,25 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
   // Debounce timeout ref for text content updates
   const textContentTimeoutRef = useRef(null)
   
+  // Refs to avoid stale closures
+  const selectedElementRef = useRef(selectedElement)
+  const projectRef = useRef(project) 
+  const updateElementFunctionRef = useRef(updateElementFunction)
+  
+  // Update refs when values change
+  useEffect(() => {
+    selectedElementRef.current = selectedElement
+    projectRef.current = project
+    updateElementFunctionRef.current = updateElementFunction
+  }, [selectedElement, project, updateElementFunction])
+
   // Debounced handler for text content updates
   const debouncedTextContentUpdate = useCallback(async (property, value) => {
-    if (!selectedElement || !value) return
+    const element = selectedElementRef.current
+    const proj = projectRef.current
+    const updateFunc = updateElementFunctionRef.current
+    
+    if (!element || !value) return
     
     // Clear existing timeout
     if (textContentTimeoutRef.current) {
@@ -104,27 +120,28 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
     }
     
     // Send immediate visual update to iframe
-    if (updateElementFunction) {
-      updateElementFunction(property, value, selectedElement.visualId)
+    if (updateFunc) {
+      updateFunc(property, value, element.visualId)
     }
     
     // Debounce the file update (wait 800ms after user stops typing)
     textContentTimeoutRef.current = setTimeout(async () => {
-      if (project?.sandboxId) {
+      if (proj?.sandboxId) {
         
         try {
-          const response = await fetch(`/api/projects/${project.id}/sandbox/files/modify`, {
+          const response = await fetch(`/api/projects/${proj.id}/sandbox/files/modify`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              visualId: selectedElement.visualId,
-              elementSelector: selectedElement.elementPath,
-              xpath: selectedElement.xpath,
+              visualId: element.visualId,
+              elementSelector: element.elementPath,
+              xpath: element.xpath,
               property,
               value
-            })
+            }),
+            credentials: 'include'
           })
           
           const result = await response.json()
@@ -137,60 +154,7 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
         }
       }
     }, 400) // 400ms debounce delay
-  }, [selectedElement, project, updateElementFunction])
-
-  const handlePropertyChange = useCallback(async (property, value) => {
-    if (!selectedElement || !value) return
-    
-    // Handle textContent differently from CSS properties
-    if (property === 'textContent') {
-      // Use debounced handler for text content
-      debouncedTextContentUpdate(property, value)
-      return
-    }
-    
-    // Handle CSS property changes
-    const tailwindClass = convertPropertyToTailwind(property, value)
-    
-    // Send property change to iframe for immediate visual update
-    if (updateElementFunction) {
-      updateElementFunction(property, tailwindClass, selectedElement.visualId)
-    }
-    
-    // Update files in sandbox
-    if (project?.sandboxId) {
-      
-      try {
-        const response = await fetch(`/api/projects/${project.id}/sandbox/files/modify`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            visualId: selectedElement.visualId,
-            elementSelector: selectedElement.elementPath, // Keep as fallback
-            xpath: selectedElement.xpath, // Add XPath for precise targeting
-            newClassName: tailwindClass,
-            property,
-            value
-          })
-        })
-
-        const result = await response.json()
-        if (!result.success) {
-          console.error('Failed to update file:', result.error)
-          if (result.sandboxStatus && result.sandboxStatus !== 'started') {
-            alert(`File update failed: Sandbox is not running (${result.sandboxStatus}). Please start the sandbox from the project dashboard.`)
-          } else {
-            alert(`Failed to update file: ${result.error}`)
-          }
-        }
-      } catch (error) {
-        console.error('Error updating file:', error)
-        alert(`Error updating file: ${error.message}`)
-      }
-    }
-  }, [updateElementFunction, selectedElement, project])
+  }, [])
 
   // Helper function to convert property values to Tailwind classes
   const convertPropertyToTailwind = useCallback((property, value) => {
@@ -227,6 +191,64 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
         return value
     }
   }, [])
+
+  const handlePropertyChange = useCallback(async (property, value) => {
+    const element = selectedElementRef.current  
+    const proj = projectRef.current
+    const updateFunc = updateElementFunctionRef.current
+    
+    if (!element || !value) return
+    
+    // Handle textContent differently from CSS properties
+    if (property === 'textContent') {
+      // Use debounced handler for text content
+      debouncedTextContentUpdate(property, value)
+      return
+    }
+    
+    // Handle CSS property changes
+    const tailwindClass = convertPropertyToTailwind(property, value)
+    
+    // Send property change to iframe for immediate visual update
+    if (updateFunc) {
+      updateFunc(property, tailwindClass, element.visualId)
+    }
+    
+    // Update files in sandbox
+    if (proj?.sandboxId) {
+      
+      try {
+        const response = await fetch(`/api/projects/${proj.id}/sandbox/files/modify`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            visualId: element.visualId,
+            elementSelector: element.elementPath, // Keep as fallback
+            xpath: element.xpath, // Add XPath for precise targeting
+            newClassName: tailwindClass,
+            property,
+            value
+          }),
+          credentials: 'include'
+        })
+
+        const result = await response.json()
+        if (!result.success) {
+          console.error('Failed to update file:', result.error)
+          if (result.sandboxStatus && result.sandboxStatus !== 'started') {
+            alert(`File update failed: Sandbox is not running (${result.sandboxStatus}). Please start the sandbox from the project dashboard.`)
+          } else {
+            alert(`Failed to update file: ${result.error}`)
+          }
+        }
+      } catch (error) {
+        console.error('Error updating file:', error)
+        alert(`Error updating file: ${error.message}`)
+      }
+    }
+  }, [convertPropertyToTailwind, debouncedTextContentUpdate])
 
   const handlePropertyPanelClose = useCallback(() => {
     setSelectedElement(null)

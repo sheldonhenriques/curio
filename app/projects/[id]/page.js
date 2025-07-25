@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import Canvas from '@/components/flow/Canvas';
 import { Button } from '@/components/ui/Button';
@@ -51,6 +51,50 @@ export default function ProductPage({ params }) {
     };
   }, [id]);
 
+  // Start sandbox function
+  const startSandbox = useCallback(async () => {
+    try {
+      setIsStartingSandbox(true);
+      setStartupProgress({ currentStep: 0, steps: SANDBOX_STARTUP_STEPS });
+
+      // Simulate progress updates
+      const progressInterval = setInterval(() => {
+        setStartupProgress(prev => {
+          if (prev && prev.currentStep < SANDBOX_STARTUP_STEPS.length - 1) {
+            return { ...prev, currentStep: prev.currentStep + 1 };
+          }
+          return prev;
+        });
+      }, 2000);
+
+      const response = await fetch(`/api/projects/${id}/sandbox/start`, {
+        method: 'POST',
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to start sandbox');
+      }
+
+      const data = await response.json();
+      clearInterval(progressInterval);
+      setStartupProgress({ currentStep: SANDBOX_STARTUP_STEPS.length - 1, steps: SANDBOX_STARTUP_STEPS });
+      setSandboxStatus('started');
+      setPreviewUrl(data.previewUrl);
+      setError(null);
+      
+      setTimeout(() => {
+        setStartupProgress(null);
+      }, 1000);
+    } catch (err) {
+      setError(err.message);
+      setSandboxStatus('error');
+      setStartupProgress(null);
+    } finally {
+      setIsStartingSandbox(false);
+    }
+  }, [id]);
+
   // Load project data and check sandbox status
   useEffect(() => {
     if (!id) return; // Wait for id to be available
@@ -60,7 +104,9 @@ export default function ProductPage({ params }) {
         setIsLoading(true);
         
         // Load project data
-        const projectResponse = await fetch(`/api/projects/${id}`);
+        const projectResponse = await fetch(`/api/projects/${id}`, {
+          credentials: 'include'
+        });
         if (!projectResponse.ok) {
           throw new Error('Failed to load project');
         }
@@ -69,7 +115,9 @@ export default function ProductPage({ params }) {
 
         // Check sandbox status
         if (projectData.sandboxId) {
-          const statusResponse = await fetch(`/api/projects/${id}/sandbox/status`);
+          const statusResponse = await fetch(`/api/projects/${id}/sandbox/status`, {
+            credentials: 'include'
+          });
           if (statusResponse.ok) {
             const statusData = await statusResponse.json();
             setSandboxStatus(statusData.status);
@@ -96,7 +144,7 @@ export default function ProductPage({ params }) {
     };
 
     loadProject();
-  }, [id]);
+  }, [id, startSandbox]);
 
   // Polling effect for sandbox status updates
   useEffect(() => {
@@ -114,12 +162,16 @@ export default function ProductPage({ params }) {
           try {
             // Check both project data and sandbox status
             const promises = [
-              fetch(`/api/projects/${id}`)
+              fetch(`/api/projects/${id}`, {
+                credentials: 'include'
+              })
             ];
             
             // Only check sandbox status if project has sandboxId
             if (project.sandboxId) {
-              promises.push(fetch(`/api/projects/${id}/sandbox/status`));
+              promises.push(fetch(`/api/projects/${id}/sandbox/status`, {
+                credentials: 'include'
+              }));
             }
             
             const responses = await Promise.all(promises);
@@ -165,49 +217,6 @@ export default function ProductPage({ params }) {
       }
     };
   }, []);
-
-  // Start sandbox function
-  const startSandbox = async () => {
-    try {
-      setIsStartingSandbox(true);
-      setStartupProgress({ currentStep: 0, steps: SANDBOX_STARTUP_STEPS });
-
-      // Simulate progress updates
-      const progressInterval = setInterval(() => {
-        setStartupProgress(prev => {
-          if (prev && prev.currentStep < SANDBOX_STARTUP_STEPS.length - 1) {
-            return { ...prev, currentStep: prev.currentStep + 1 };
-          }
-          return prev;
-        });
-      }, 2000);
-
-      const response = await fetch(`/api/projects/${id}/sandbox/start`, {
-        method: 'POST'
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to start sandbox');
-      }
-
-      const data = await response.json();
-      clearInterval(progressInterval);
-      setStartupProgress({ currentStep: SANDBOX_STARTUP_STEPS.length - 1, steps: SANDBOX_STARTUP_STEPS });
-      setSandboxStatus('started');
-      setPreviewUrl(data.previewUrl);
-      setError(null);
-      
-      setTimeout(() => {
-        setStartupProgress(null);
-      }, 1000);
-    } catch (err) {
-      setError(err.message);
-      setSandboxStatus('error');
-      setStartupProgress(null);
-    } finally {
-      setIsStartingSandbox(false);
-    }
-  };
 
   // Loading state
   if (isLoading) {

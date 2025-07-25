@@ -13,7 +13,9 @@ export const useProjects = () => {
   const fetchProjects = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/projects');
+      const response = await fetch('/api/projects', {
+        credentials: 'include'
+      });
       if (!response.ok) {
         throw new Error('Failed to fetch projects');
       }
@@ -53,7 +55,9 @@ export const useProjects = () => {
       if (!pollingIntervalRef.current) {
         pollingIntervalRef.current = setInterval(async () => {
           try {
-            const response = await fetch('/api/projects');
+            const response = await fetch('/api/projects', {
+              credentials: 'include'
+            });
             if (response.ok) {
               const data = await response.json();
               
@@ -61,7 +65,9 @@ export const useProjects = () => {
               const updatedProjects = [...data];
               for (const project of data.filter(p => p.sandboxId && p.sandboxStatus === 'started')) {
                 try {
-                  const statusResponse = await fetch(`/api/projects/${project.id}/sandbox/status`);
+                  const statusResponse = await fetch(`/api/projects/${project.id}/sandbox/status`, {
+                    credentials: 'include'
+                  });
                   if (statusResponse.ok) {
                     const statusData = await statusResponse.json();
                     
@@ -133,6 +139,7 @@ export const useProjects = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(updatedProject),
+        credentials: 'include'
       });
 
       if (!response.ok) {
@@ -159,6 +166,7 @@ export const useProjects = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(projectData),
+        credentials: 'include'
       });
 
       if (!response.ok) {
@@ -186,6 +194,7 @@ export const useProjects = () => {
 
       const response = await fetch(`/api/projects/${projectId}`, {
         method: 'DELETE',
+        credentials: 'include'
       });
 
       if (!response.ok) {

@@ -4,6 +4,7 @@ import next from 'next';
 import { WebSocketServer, WebSocket } from 'ws';
 import { Daytona } from '@daytonaio/sdk';
 import { v4 as uuidv4 } from 'uuid';
+import { getProjectByIdInternal, getChatSessionByNodeIdInternal } from './src/utils/supabase/service.js';
 // Note: Using Daytona SDK's executeCommand instead of spawn for better sandbox integration
 
 // Import session cleanup service (will be lazy loaded when needed)
@@ -118,13 +119,8 @@ app.prepare().then(() => {
     }
 
     try {
-      // Get project data
-      const projectResponse = await fetch(`http://localhost:${port}/api/projects/${projectId}`);
-      if (!projectResponse.ok) {
-        throw new Error('Project not found');
-      }
-
-      const project = await projectResponse.json();
+      // Get project data using service client (bypasses authentication)
+      const project = await getProjectByIdInternal(projectId);
       if (!project.sandboxId) {
         throw new Error('Project does not have an active sandbox');
       }
@@ -142,15 +138,12 @@ app.prepare().then(() => {
         throw new Error('Sandbox not found or not accessible. Please refresh the page.');
       }
 
-      // Check for existing Claude session in database first
+      // Check for existing Claude session in database first using service client
       let claudeSessionId = null;
       try {
-        const response = await fetch(`http://localhost:${port}/api/chat-sessions/${nodeId}`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.session && data.session.sessionId) {
-            claudeSessionId = data.session.sessionId;
-          }
+        const data = await getChatSessionByNodeIdInternal(nodeId, projectId);
+        if (data.session && data.session.sessionId) {
+          claudeSessionId = data.session.sessionId;
         }
       } catch (error) {
         console.log('[Chat] No existing session found, will create new one');

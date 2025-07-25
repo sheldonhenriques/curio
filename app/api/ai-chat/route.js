@@ -1,5 +1,6 @@
 import { Daytona } from "@daytonaio/sdk";
 import { createClient } from '@/utils/supabase/server';
+import { getProjectByIdInternal } from '@/utils/supabase/service';
 
 export async function POST(req) {
   try {
@@ -45,16 +46,15 @@ export async function POST(req) {
       );
     }
     
-    // Get project data to retrieve sandbox ID
-    const projectResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/projects/${projectId}`);
-    if (!projectResponse.ok) {
+    // Get project data to retrieve sandbox ID using service client
+    try {
+      var project = await getProjectByIdInternal(projectId);
+    } catch (error) {
       return new Response(
         JSON.stringify({ error: "Project not found" }),
         { status: 404, headers: { "Content-Type": "application/json" } }
       );
     }
-    
-    const project = await projectResponse.json();
     if (!project.sandboxId) {
       return new Response(
         JSON.stringify({ error: "Project does not have an active sandbox" }),
