@@ -11,6 +11,10 @@ export const ProjectCard = ({ project, onToggleStar, onDelete }) => {
   const router = useRouter();
 
   const handleCardClick = () => {
+    if (isDisabled) {
+      return;
+    }
+    
     router.push(`/projects/${project.id}`);
   };
 
@@ -28,9 +32,29 @@ export const ProjectCard = ({ project, onToggleStar, onDelete }) => {
     e.stopPropagation();
   };
 
+  const isSettingUp = project.sandboxStatus && [
+    'creating',
+    'starting', 
+    'created',
+    'setting_up_nextjs',
+    'installing_claude_sdk',
+    'configuring_editor',
+    'installing_dependencies',
+    'optimizing_project',
+    'starting_server',
+    'finalizing'
+  ].includes(project.sandboxStatus);
+  
+  const isChecking = project.sandboxId && !project.sandboxStatus;
+  const isDisabled = isSettingUp || isChecking;
+
   return (
     <div 
-      className={`bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-gray-200 dark:border-gray-800 ${colorClass} border-t-4 p-6 transition-transform duration-200 hover:scale-[1.02] cursor-pointer`}
+      className={`bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-gray-200 dark:border-gray-800 ${colorClass} border-t-4 p-6 transition-transform duration-200 ${
+        isDisabled 
+          ? 'opacity-75 cursor-not-allowed' 
+          : 'hover:scale-[1.02] cursor-pointer'
+      }`}
       onClick={handleCardClick}
     >
       {/* Header */}

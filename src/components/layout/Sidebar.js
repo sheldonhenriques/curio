@@ -2,6 +2,7 @@ import { NAVIGATION_ITEMS } from '@/constants/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { LogOut } from 'lucide-react';
 import Image from 'next/image';
+import Link from 'next/link';
 
 export const Sidebar = () => {
   const { user, loading, getInitials, getDisplayName } = useAuth();
@@ -23,25 +24,26 @@ export const Sidebar = () => {
 
       {/* Navigation */}
       <nav className="space-y-2">
-        {NAVIGATION_ITEMS.map(({ id, label, icon: Icon, active }) => (
-          <div
-            key={id}
-            className={`flex items-center gap-3 p-2 rounded-lg transition-all duration-300 cursor-pointer relative ${
-              active
-                ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white font-medium'
-                : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
-            }`}
-          >
-            <Icon className="w-5 h-5 flex-shrink-0" />
-            <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap overflow-hidden">
-              {label}
-            </span>
-            
-            {/* Tooltip for collapsed state */}
-            <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-sm rounded opacity-0 group-hover:opacity-0 hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-10 pointer-events-none">
-              {label}
+        {NAVIGATION_ITEMS.map(({ id, label, icon: Icon, href, active }) => (
+          <Link key={id} href={href}>
+            <div
+              className={`flex items-center gap-3 p-2 rounded-lg transition-all duration-300 cursor-pointer relative ${
+                active
+                  ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white font-medium'
+                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+              }`}
+            >
+              <Icon className="w-5 h-5 flex-shrink-0" />
+              <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap overflow-hidden">
+                {label}
+              </span>
+              
+              {/* Tooltip for collapsed state */}
+              <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-sm rounded opacity-0 group-hover:opacity-0 hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-10 pointer-events-none">
+                {label}
+              </div>
             </div>
-          </div>
+          </Link>
         ))}
       </nav>
 
