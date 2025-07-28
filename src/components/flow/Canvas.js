@@ -12,12 +12,15 @@ import ReactFlow, {
 } from 'reactflow';
 
 import 'reactflow/dist/style.css';
-import { initialNodes } from '@/data/nodes.js'
 import BaseNode from "@/components/nodes/basenode"
 import ChecklistNode from "@/components/nodes/checklist"
 import WebserverNode from "@/components/nodes/webserver"
 import AIChatNode from "@/components/nodes/aichat"
 import FloatingPropertyPanel from "@/components/flow/FloatingPropertyPanel"
+import { useProjectNodes } from '@/hooks/useProjectNodes'
+import { useAuth } from '@/hooks/useAuth'
+import { nodeLocalStorage } from '@/services/nodeLocalStorage'
+import { useNodeSync } from '@/hooks/useNodeSync'
 
 // Create context for property panel state
 const PropertyPanelContext = createContext()
@@ -43,18 +46,65 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
   const [selectedElement, setSelectedElement] = useState(null)
   const [updateElementFunction, setUpdateElementFunction] = useState(null)
 
-  // Create project-specific nodes with sandbox integration
+  // Get current user for database operations
+  const { user } = useAuth();
+
+  // Use database-backed nodes with fallback to static nodes
+  const {
+    nodes: dbNodes,
+    loading: nodesLoading,
+    error: nodesError,
+    createNode,
+    updateNode,
+    deleteNode,
+    createDefaultAIChatNode
+  } = useProjectNodes(project?.id, user?.id);
+
+  // Initialize periodic sync for node positions/dimensions
+  const { forceSyncCurrentProject } = useNodeSync({
+    interval: 10000, // 10 seconds
+    updateNode,
+    projectId: project?.id,
+    userId: user?.id,
+    enabled: !!(project?.id && user?.id && updateNode)
+  });
+
+  // Create project-specific nodes with sandbox integration and local storage positions
   const projectNodes = useMemo(() => {
-    if (!project) return initialNodes;
-    
-    return initialNodes.map(node => {
+    if (!project || nodesLoading) {
+      return [];
+    }
+
+    // If there's an error loading nodes, return empty array
+    if (nodesError) {
+      console.error('Error loading nodes:', nodesError);
+      return [];
+    }
+
+    // Use database nodes and update them with current project context
+    return dbNodes.map(node => {
+      // Get local storage data for this node
+      const localNodeData = nodeLocalStorage.getNodeData(project.id, node.id);
+      
+      let updatedNode = { ...node };
+      
+      // Apply local storage position and style if available (prioritize local changes)
+      if (localNodeData) {
+        if (localNodeData.position) {
+          updatedNode.position = localNodeData.position;
+        }
+        if (localNodeData.style) {
+          updatedNode.style = { ...updatedNode.style, ...localNodeData.style };
+        }
+      }
+
       // Update webserver nodes with the sandbox preview URL and status
       if (node.type === 'webserverNode') {
         return {
-          ...node,
+          ...updatedNode,
           data: {
-            ...node.data,
-            url: previewUrl || node.data.url,
+            ...updatedNode.data,
+            url: previewUrl || updatedNode.data.url,
             projectName: project.title,
             sandboxStatus: sandboxStatus,
             hasError: !previewUrl && (sandboxStatus === 'failed' || sandboxStatus === 'error')
@@ -64,9 +114,9 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
       // Update AI chat nodes with project context
       if (node.type === 'aichatNode') {
         return {
-          ...node,
+          ...updatedNode,
           data: {
-            ...node.data,
+            ...updatedNode.data,
             projectId: project.id,
             projectName: project.title,
             sandboxId: project.sandboxId,
@@ -74,17 +124,79 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
           }
         };
       }
-      return node;
+      return updatedNode;
     });
-  }, [project, previewUrl, sandboxStatus]);
+  }, [project, previewUrl, sandboxStatus, dbNodes, nodesLoading, nodesError]);
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(projectNodes);
+  const [nodes, setNodes, defaultOnNodesChange] = useNodesState(projectNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
-  // Update nodes when project or previewUrl changes
+  // Custom onNodesChange handler with local storage
+  const onNodesChange = useCallback((changes) => {
+    // Apply changes immediately for UI responsiveness
+    defaultOnNodesChange(changes);
+
+    // Handle local storage for relevant changes
+    if (project?.id) {
+      changes.forEach(change => {
+        if (change.type === 'position' && change.position) {
+          // Store position in local storage immediately
+          nodeLocalStorage.setNodeData(project.id, change.id, {
+            position: change.position
+          });
+        } else if (change.type === 'dimensions' && change.dimensions) {
+          // Store dimensions in local storage immediately
+          nodeLocalStorage.setNodeData(project.id, change.id, {
+            style: { 
+              width: change.dimensions.width, 
+              height: change.dimensions.height 
+            }
+          });
+        }
+        // Add more change types as needed (select, remove, etc.)
+      });
+    }
+  }, [defaultOnNodesChange, project?.id]);
+
+  // Update nodes when project data changes (but preserve local positions)
   useEffect(() => {
-    setNodes(projectNodes);
+    setNodes(currentNodes => {
+      // Only update if the structure has actually changed
+      if (currentNodes.length !== projectNodes.length) {
+        return projectNodes;
+      }
+      
+      // Check if any node IDs or types have changed
+      const hasStructuralChanges = projectNodes.some((newNode, index) => {
+        const currentNode = currentNodes[index];
+        return !currentNode || currentNode.id !== newNode.id || currentNode.type !== newNode.type;
+      });
+      
+      if (hasStructuralChanges) {
+        return projectNodes;
+      }
+      
+      // Only update non-position/style data (like webserver URLs, AI chat project context)
+      return currentNodes.map(currentNode => {
+        const newNode = projectNodes.find(n => n.id === currentNode.id);
+        if (newNode) {
+          return {
+            ...currentNode,
+            data: newNode.data, // Update project context data
+            // Keep existing position and style from current state
+          };
+        }
+        return currentNode;
+      });
+    });
   }, [projectNodes, setNodes]);
+
+  // Create default AI chat node for new projects (if no nodes exist)
+  useEffect(() => {
+    if (project && user && dbNodes.length === 0 && !nodesLoading && !nodesError) {
+      createDefaultAIChatNode(project);
+    }
+  }, [project, user, dbNodes.length, nodesLoading, nodesError, createDefaultAIChatNode]);
 
   const onConnect = useCallback(
     (params) => setEdges((eds) => addEdge(params, eds)),
@@ -254,7 +366,23 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
     setSelectedElement(null)
   }, [])
 
-  // Cleanup timeout on component unmount
+  // Force sync when page becomes visible (user switches back to tab)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && project?.id) {
+        // Force sync when user returns to the tab
+        forceSyncCurrentProject();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [project?.id, forceSyncCurrentProject]);
+
+  // Cleanup timeouts on component unmount
   useEffect(() => {
     return () => {
       if (textContentTimeoutRef.current) {
@@ -263,13 +391,27 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
     }
   }, [])
 
-  // Context value for property panel
+  // Function to handle node data updates (for checklist items, webserver URLs, etc.)
+  const handleNodeDataUpdate = useCallback((nodeId, newData, immediate = false) => {
+    if (!project || !user || !updateNode) return;
+
+    // Update local state immediately
+    setNodes(nodes => nodes.map(node => 
+      node.id === nodeId ? { ...node, data: { ...node.data, ...newData } } : node
+    ));
+
+    // Persist to database
+    updateNode(nodeId, { data: newData }, immediate);
+  }, [project, user, updateNode, setNodes]);
+
+  // Context value for property panel and node components
   const propertyPanelValue = {
     selectedElement,
     setSelectedElement,
     updateElementFunction,
     setUpdateElementFunction,
-    handlePropertyChange
+    handlePropertyChange,
+    handleNodeDataUpdate // Add this for node components to use
   }
 
   return (

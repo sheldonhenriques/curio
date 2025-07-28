@@ -187,3 +187,45 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+-- Create project_nodes table for storing node data
+CREATE TABLE project_nodes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    node_id UUID NOT NULL DEFAULT gen_random_uuid(),
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+          type TEXT NOT NULL CHECK (type IN ('baseNode', 'checklistNode', 'webserverNode', 'aichatNode')),
+            position JSONB NOT NULL DEFAULT '{"x": 0, "y": 0}',
+              data JSONB NOT NULL DEFAULT '{}',
+                style JSONB NOT NULL DEFAULT '{}',
+                  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                      
+                        UNIQUE(node_id, project_id)
+                        );
+
+                        -- Indexes for performance
+                        CREATE INDEX idx_project_nodes_project_id ON project_nodes(project_id);
+                        CREATE INDEX idx_project_nodes_user_id ON project_nodes(user_id);
+                        CREATE INDEX idx_project_nodes_type ON project_nodes(type);
+
+                        -- Enable Row Level Security
+                        ALTER TABLE project_nodes ENABLE ROW LEVEL SECURITY;
+
+                        -- RLS Policy: Users can only access nodes for projects they own
+                        CREATE POLICY "Users can manage their project nodes" ON project_nodes
+                          USING (user_id = auth.uid());
+
+                          -- Function to automatically update updated_at timestamp
+                          CREATE OR REPLACE FUNCTION update_updated_at_column()
+                          RETURNS TRIGGER AS $$
+                          BEGIN
+                              NEW.updated_at = NOW();
+                                  RETURN NEW;
+                                  END;
+                                  $$ language 'plpgsql';
+
+                                  -- Trigger to automatically update updated_at
+                                  CREATE TRIGGER update_project_nodes_updated_at 
+                                      BEFORE UPDATE ON project_nodes 
+                                          FOR EACH ROW 
+                                              EXECUTE FUNCTION update_updated_at_column();

@@ -197,7 +197,7 @@ export default function ProductPage({ params }) {
           } catch (error) {
             console.error('Error polling sandbox status:', error);
           }
-        }, 5000); // Poll every 5 seconds for better debugging
+        }, 30000); // Poll every 30 seconds to reduce conflicts with local storage
       }
     } else {
       // Stop polling if not needed
