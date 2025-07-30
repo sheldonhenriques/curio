@@ -1,5 +1,39 @@
-import { createSandbox, createSandboxWithId } from './sandboxService.js';
+import { createSandboxWithId } from './sandboxService.js';
 import { createClient } from '@supabase/supabase-js';
+
+// Function to send webhook notifications for real-time dashboard updates
+async function sendWebhookUpdate(projectId, status, userId) {
+  try {
+    // Send WebSocket broadcast to dashboard clients
+    const webhookPayload = {
+      type: 'project_status_update',
+      projectId: projectId,
+      status: status,
+      userId: userId,
+      timestamp: Date.now()
+    };
+    
+    console.log(`🔔 Webhook update: Project ${projectId} status changed to ${status}`);
+    
+    // Make HTTP request to WebSocket server endpoint for broadcasting
+    try {
+      await fetch('http://localhost:3000/api/webhook/broadcast', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(webhookPayload)
+      });
+    } catch (broadcastError) {
+      console.warn('⚠️ Failed to broadcast webhook update:', broadcastError.message);
+      // Don't throw - webhook failure shouldn't break sandbox creation
+    }
+    
+  } catch (error) {
+    console.error('❌ Error sending webhook update:', error);
+    // Don't throw - webhook failure shouldn't break sandbox creation
+  }
+}
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -89,6 +123,9 @@ export const createSandboxJob = async (projectId, projectTitle, userId) => {
           
         if (error) {
           console.error(`❌ Error updating project ${projectId} status to ${status}:`, error);
+        } else {
+          // Send webhook notification for real-time dashboard updates
+          await sendWebhookUpdate(projectId, status, userId);
         }
       } catch (err) {
         console.error(`❌ Exception updating project ${projectId} status:`, err);
@@ -129,6 +166,9 @@ export const createSandboxJob = async (projectId, projectTitle, userId) => {
             updated_at: new Date().toISOString()
           })
           .eq('id', projectId);
+          
+        // Send final webhook notification for the completed setup
+        await sendWebhookUpdate(projectId, 'started', userId);
       })
       .catch(async (setupError) => {
         console.error(`❌ Setup failed for sandbox ${sandboxId}:`, setupError);

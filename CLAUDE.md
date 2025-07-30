@@ -57,53 +57,53 @@ This is a Next.js 15 application built with React 19 that implements a node-base
 
 ### Database Architecture Overview
 
-The application uses a hybrid database approach optimized for different data types:
+The application uses Supabase as the primary database solution:
 
 - **Authentication System**: Supabase Auth for secure user authentication and session management
-- **Project Data**: MongoDB Atlas for flexible project data storage with complex schemas
+- **Project Data**: Supabase PostgreSQL for project data storage with relational schemas
 - **Chat Sessions**: Supabase PostgreSQL for real-time chat session and message storage
 - **User Management**: Supabase for user profiles and authentication state
 
-This hybrid approach combines the strengths of both systems: MongoDB's flexibility for project data and Supabase's real-time capabilities for chat sessions.
+This unified approach provides consistency across all data operations with Supabase's real-time capabilities and PostgreSQL's reliability.
 
-### MongoDB Schema Design
+### Supabase Schema Design
 
-**Projects Collection**:
-```javascript
-{
-  _id: ObjectId,
-  id: Number,                    // Unique sequential ID for frontend compatibility
-  title: String,                 // Project title (required)
-  description: String,           // Project description (required)
-  color: String,                 // Project theme color (blue, purple, green, yellow, red, indigo, etc.)
-  starred: Boolean,              // Whether project is starred/favorited
-  progress: Number,              // Number of completed tasks
-  totalTasks: Number,            // Total number of tasks in project
-  updatedAt: String,             // Human-readable last update timestamp
-  status: String,                // Project status: "on-track", "overdue", "completed", "paused"
-  tags: [String],                // Array of project tags/categories
-  team: [String],                // Array of team member initials/IDs
-  sandboxId: String,             // Daytona sandbox ID for development environment integration
-  sandboxStatus: String,         // Sandbox status: "creating", "created", "started", "stopped", "failed"
-  sandboxError: String,          // Error message if sandbox creation/operation failed
-  createdAt: Date,               // MongoDB timestamp for creation
-  updatedAtTimestamp: Date       // MongoDB timestamp for last update
-}
+**Projects Table**:
+```sql
+CREATE TABLE projects (
+  id BIGSERIAL PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  color TEXT NOT NULL,
+  starred BOOLEAN DEFAULT FALSE,
+  progress INTEGER DEFAULT 0,
+  total_tasks INTEGER DEFAULT 0,
+  status TEXT NOT NULL,
+  tags TEXT[] DEFAULT '{}',
+  team TEXT[] DEFAULT '{}',
+  sandbox_id TEXT,
+  sandbox_status TEXT DEFAULT 'creating',
+  sandbox_error TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
 ```
 
-### MongoDB Atlas Implementation
+### Supabase Implementation
 
 **Current Status**: ✅ **IMPLEMENTED AND WORKING**
 
 **Connection Details**:
-- **Database**: MongoDB Atlas cloud database
-- **Connection**: `src/lib/mongodb.js` - Mongoose connection with caching and Stable API v1
-- **Environment**: `.env` file contains `MONGODB_URI`
-- **Database Name**: `curio` (specified in connection string)
+- **Database**: Supabase PostgreSQL cloud database
+- **Connection**: `src/utils/supabase/server.js` and `src/utils/supabase/client.js`
+- **Environment**: `.env` file contains `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`
+- **Authentication**: Integrated with Supabase Auth
 
 **Key Files Implemented**:
-- `/src/lib/mongodb.js` - MongoDB connection utility with Mongoose
-- `/src/models/Project.js` - Project schema with validation
+- `/src/utils/supabase/server.js` - Server-side Supabase client
+- `/src/utils/supabase/client.js` - Client-side Supabase client
+- `/src/utils/supabase/service.js` - Service functions for internal operations
 - `/app/api/projects/route.js` - GET/POST endpoints for projects
 - `/app/api/projects/[id]/route.js` - GET/PUT/DELETE for individual projects
 - `/src/hooks/useProjects.js` - React hook for project CRUD operations
@@ -130,33 +130,28 @@ This hybrid approach combines the strengths of both systems: MongoDB's flexibili
 - `POST /api/projects/[id]/sandbox/inject-ids` - Inject unique AST-based IDs into JSX/TSX files
 
 **Dashboard Integration**:
-- Projects are loaded from MongoDB Atlas via `/src/hooks/useProjects.js`
+- Projects are loaded from Supabase via `/src/hooks/useProjects.js`
 - Real-time updates: star toggles, project creation persist to database
 - Loading states and error handling implemented
 - "New Project" button opens `/src/components/project/ProjectCreateForm.js`
 - Project deletion with confirmation dialog and sandbox cleanup
 
 **Project Deletion System**:
-- **Complete Removal**: Deletes both MongoDB project record and associated Daytona sandbox
+- **Complete Removal**: Deletes both Supabase project record and associated Daytona sandbox
 - **UI Integration**: Dropdown menu in project cards with trash icon and confirmation dialog
 - **Optimistic Updates**: Projects immediately removed from UI with rollback on failure
 - **Graceful Error Handling**: Project deletion continues even if sandbox cleanup fails
 - **Key Files**: `useProjects.js` hook, `ProjectCard.js` dropdown, dashboard confirmation dialog
 
-**MongoDB Atlas Setup Requirements**:
-1. **Connection String Format**: `mongodb+srv://username:password@cluster.mongodb.net/curio?retryWrites=true&w=majority&appName=ClusterName`
-3. **Network Access**: IP address must be whitelisted in MongoDB Atlas Network Access. Command for it is `curl -s ifconfig.me`
-4. **Database User**: Must have "Read and write to any database" permissions
-5. **Database Name**: Must be specified in connection string (e.g., `/curio`)
-
-**Troubleshooting Notes**:
-- "bad auth : authentication failed" usually means: wrong credentials, special chars not encoded, or IP not whitelisted
-- Environment variables require server restart to take effect
-- Use `curl -s ifconfig.me` to get current IP for whitelisting
+**Supabase Setup Requirements**:
+1. **Environment Variables**: `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`
+2. **Row Level Security**: Proper RLS policies for user data isolation
+3. **Authentication**: Supabase Auth integration for user management
+4. **Database Tables**: Projects and chat sessions tables properly configured
 
 **Data Flow**:
 - Static `src/data/projects.js` has been removed
-- All project data now flows through MongoDB Atlas
+- All project data now flows through Supabase PostgreSQL
 - UI components unchanged - only data source switched from static to API
 
 ## Sandbox Management System
@@ -177,9 +172,21 @@ This hybrid approach combines the strengths of both systems: MongoDB's flexibili
 
 **Sandbox Workflow**:
 1. **Creation**: Project creation triggers background sandbox setup with Next.js template
-2. **Status Tracking**: Projects track sandbox status (`creating`, `created`, `started`, `stopped`, `failed`)
+2. **Status Tracking**: Projects track sandbox status with real-time updates:
+   - `creating` - Initial sandbox creation
+   - `setting_up_nextjs` - Installing Next.js with TypeScript and Tailwind
+   - `installing_claude_sdk` - Installing Claude Code SDK for AI chat
+   - `configuring_editor` - Adding Visual Editor SDK
+   - `installing_dependencies` - Installing AST dependencies for ID injection
+   - `optimizing_project` - Injecting unique IDs into JSX/TSX files
+   - `starting_server` - Starting development server
+   - `finalizing` - Final setup steps
+   - `started` - Ready to use with live preview
+   - `stopped` - Inactive sandbox
+   - `failed` - Setup failed with error details
 3. **Preview URLs**: Live preview links generated when sandbox is running
 4. **Auto-Stop**: Inactive sandboxes automatically stop after timeout to save resources
+5. **Real-time Updates**: WebSocket notifications sent to dashboard for live status updates
 
 **Technical Implementation**:
 - Sandbox operations use Daytona SDK with Node.js 20 base image
@@ -491,7 +498,7 @@ This hybrid approach combines the strengths of both systems: MongoDB's flexibili
 - **React Hook Dependencies**: All useCallback/useEffect dependencies properly managed
 
 **Maintenance Notes**:
-- **Database**: MongoDB Atlas with proper indexing and connection pooling
+- **Database**: Supabase PostgreSQL with proper indexing and RLS policies
 - **Authentication**: Supabase Auth with secure session management
 - **API Routes**: RESTful API design with proper error responses
 - **WebSocket**: Real-time communication with reconnection logic
@@ -499,7 +506,7 @@ This hybrid approach combines the strengths of both systems: MongoDB's flexibili
 
 **Development Standards**:
 - **Component Structure**: Reusable components with proper prop validation
-- **State Management**: React hooks for local state, MongoDB for persistence with ref-based optimization  
+- **State Management**: React hooks for local state, Supabase for persistence with ref-based optimization  
 - **Error Boundaries**: Graceful error handling throughout the application
 - **Security**: Protected routes, input validation, and secure API endpoints
 - **Testing**: Ready for test implementation with clean, testable code structure
@@ -510,7 +517,7 @@ This hybrid approach combines the strengths of both systems: MongoDB's flexibili
 
 **Current Status**: ✅ **FULLY OPTIMIZED**
 
-**Overview**: Comprehensive code cleanup and optimization performed to resolve all ESLint warnings, webpack issues, and performance bottlenecks.
+**Overview**: Comprehensive code cleanup and optimization performed to resolve all ESLint warnings, webpack issues, performance bottlenecks, and removal of unused systems.
 
 **Issues Resolved**:
 - **Debug Logging Cleanup**: Removed all unnecessary console.log statements while preserving essential error logging
@@ -519,6 +526,8 @@ This hybrid approach combines the strengths of both systems: MongoDB's flexibili
 - **Image Optimization**: Replaced HTML img tags with Next.js Image components for better performance
 - **Deprecated API Usage**: Updated deprecated substr() calls to substring()
 - **Unused Imports**: Cleaned up all unused import statements across the codebase
+- **Legacy Code Removal**: Removed unused SSE (Server-Sent Events) system and old synchronous sandbox creation functions
+- **Architecture Simplification**: Consolidated real-time communication to single WebSocket-based system
 
 **Key Optimizations**:
 
@@ -546,6 +555,12 @@ This hybrid approach combines the strengths of both systems: MongoDB's flexibili
 - `src/components/layout/Sidebar.js` - Updated to Next.js Image component, removed unused imports
 - `src/hooks/useClaudeWebSocket.js` - Added useCallback wrapper, fixed deprecated API usage
 - `src/components/nodes/aichat/index.js` - Fixed useEffect dependencies
+- `src/services/sandboxService.js` - Removed legacy `createSandbox` function
+- `app/api/projects/[id]/sandbox/retry/route.js` - Simplified retry logic to use background job queue
+
+**Files Removed**:
+- `src/hooks/useSSE.js` - Unused Server-Sent Events hook
+- `app/api/webhook/sse/route.js` - Unused SSE API endpoint
 
 **Quality Metrics**:
 - **ESLint Status**: ✅ 0 warnings, 0 errors
@@ -555,7 +570,7 @@ This hybrid approach combines the strengths of both systems: MongoDB's flexibili
 
 ## Memories
 
-- Successfully migrated from Supabase database to MongoDB Atlas while maintaining Supabase Auth
+- Built comprehensive project management system using Supabase for all data storage
 - Implemented comprehensive visual website editor with Tailwind CSS integration
 - Built robust AI chat system with Claude Code CLI integration and WebSocket communication
 - Cleaned up all debug logging for production readiness
@@ -563,3 +578,5 @@ This hybrid approach combines the strengths of both systems: MongoDB's flexibili
 - Resolved all React Hook dependency warnings and webpack circular dependency issues
 - Optimized Canvas.js with ref-based state management for improved performance
 - Achieved zero ESLint warnings across entire codebase
+- Removed unused SSE system and legacy sandbox creation code for cleaner architecture
+- Simplified retry logic to use background job queue system consistently

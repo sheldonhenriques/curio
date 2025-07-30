@@ -2,6 +2,7 @@ import { createServer } from 'http';
 import { parse } from 'url';
 import next from 'next';
 import { WebSocketServer, WebSocket } from 'ws';
+import { Server as SocketIOServer } from 'socket.io';
 import { Daytona } from '@daytonaio/sdk';
 import { v4 as uuidv4 } from 'uuid';
 import { getProjectByIdInternal, getChatSessionByNodeIdInternal } from './src/utils/supabase/service.js';
@@ -427,6 +428,36 @@ IMPORTANT CONTEXT:
       }
     }
   }, 5 * 60 * 1000); // Check every 5 minutes
+
+  // Socket.IO server for real-time project updates
+  const io = new SocketIOServer(server, {
+    cors: {
+      origin: "*",
+      methods: ["GET", "POST"]
+    }
+  });
+
+  // Socket.IO connection handling
+  io.on('connection', (socket) => {
+    console.log('🔌 Socket.IO client connected:', socket.id);
+
+    // Handle client disconnection
+    socket.on('disconnect', (reason) => {
+      console.log('🔌 Socket.IO client disconnected:', socket.id, reason);
+    });
+
+    // Handle room joining (for user-specific updates)
+    socket.on('join', (data) => {
+      const { userId } = data;
+      if (userId) {
+        socket.join(`user-${userId}`);
+        console.log(`🔌 Socket ${socket.id} joined user room: user-${userId}`);
+      }
+    });
+  });
+
+  // Store Socket.IO instance globally for broadcast access
+  global.socketIO = io;
 
   server.once('error', (err) => {
     console.error('Server error:', err);

@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { filterProjects } from '@/utils/projectFilters';
+import { useSocket } from './useSocket';
 
 export const useProjects = () => {
   const [projects, setProjects] = useState([]);
@@ -10,107 +11,124 @@ export const useProjects = () => {
   const [deletingProjects, setDeletingProjects] = useState(new Set());
   const pollingIntervalRef = useRef(null);
 
-  const fetchProjects = useCallback(async () => {
+  // Initialize Socket.IO connection
+  const { isConnected, onProjectUpdate } = useSocket();
+  console.log('🔌 useProjects - Socket.IO connected:', isConnected);
+
+  // Handle real-time project updates via Socket.IO
+  const handleProjectUpdate = useCallback((projectId, status, data) => {
+    setProjects(prevProjects => 
+      prevProjects.map(project => 
+        project.id === parseInt(projectId)
+          ? { 
+              ...project, 
+              sandboxStatus: status, 
+              updated_at: new Date().toISOString(),
+              previewUrl: data?.previewUrl || project.previewUrl
+            }
+          : project
+      )
+    );
+  }, []);
+
+  // Connect to Socket.IO for real-time updates
+  useEffect(() => {
+    const unsubscribe = onProjectUpdate(handleProjectUpdate);
+    return unsubscribe;
+  }, [onProjectUpdate, handleProjectUpdate]);
+
+  // Webhook-enhanced project loading with minimal polling
+  const refreshWithWebhook = useCallback(async (showLoading = false) => {
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
+      
+      // Get latest project data
       const response = await fetch('/api/projects', {
         credentials: 'include'
       });
       if (!response.ok) {
         throw new Error('Failed to fetch projects');
       }
+      
       const data = await response.json();
+      let updatedProjects = [...data];
+      const projectsWithSandboxes = data.filter(p => p.sandboxId);
       
-      // For projects with sandboxId but static status, clear the status to show "Checking..."
-      const processedData = data.map(project => {
-        if (project.sandboxId && (project.sandboxStatus === 'created' || project.sandboxStatus === 'failed')) {
-          return { ...project, sandboxStatus: null };
+      // Use webhook to get live sandbox statuses, but only for projects with "started" database status
+      const projectsNeedingLiveStatus = projectsWithSandboxes.filter(p => p.sandboxStatus === 'started');
+      
+      if (projectsNeedingLiveStatus.length > 0) {
+        try {
+          const webhookResponse = await fetch('/api/webhook/sandbox-status', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            credentials: 'include',
+            body: JSON.stringify({
+              type: 'selective-batch-status',
+              projectIds: projectsNeedingLiveStatus.map(p => p.id)
+            })
+          });
+
+          if (webhookResponse.ok) {
+            const webhookData = await webhookResponse.json();
+            
+            if (webhookData.success && webhookData.statuses) {
+              // Update projects with live Daytona status, but only for projects that were "started" in DB
+              updatedProjects = data.map(project => {
+                // Only update if project was "started" in database and we have live status
+                if (project.sandboxStatus === 'started') {
+                  const liveStatus = webhookData.statuses[project.id];
+                  if (liveStatus) {
+                    return {
+                      ...project,
+                      sandboxStatus: liveStatus.status,
+                      previewUrl: liveStatus.previewUrl || project.previewUrl
+                    };
+                  }
+                }
+                // For all other statuses (creating, failed, stopped, etc.), use database status
+                return project;
+              });
+            }
+          } else {
+            console.warn('Webhook unavailable, using database status for all projects');
+          }
+        } catch (webhookError) {
+          console.warn('Webhook failed, using database status for all projects:', webhookError.message);
         }
-        return project;
-      }).filter(project => !deletingProjects.has(project.id)); // Filter out projects being deleted
+      }
       
-      setProjects(processedData);
-      setError(null);
-    } catch (err) {
-      setError(err.message);
-      console.error('Error fetching projects:', err);
+      // Filter out projects being deleted and update with live status data
+      const filteredProjects = updatedProjects.filter(project => !deletingProjects.has(project.id));
+      setProjects(filteredProjects);
+      
+      if (showLoading) setError(null);
+    } catch (error) {
+      console.error('Error refreshing projects:', error);
+      if (showLoading) setError(error.message);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   }, [deletingProjects]);
+
+  const fetchProjects = useCallback(async () => {
+    await refreshWithWebhook(true);
+  }, [refreshWithWebhook]);
 
   useEffect(() => {
     fetchProjects();
   }, [fetchProjects]);
 
-  // Polling effect for projects with 'creating' status
+  // No polling - Socket.IO handles real-time updates
   useEffect(() => {
-    const projectsWithCreatingStatus = projects.filter(p => p.sandboxStatus === 'creating');
-    const projectsWithSandboxId = projects.filter(p => p.sandboxId);
-    
-    const shouldPoll = projectsWithCreatingStatus.length > 0 || projectsWithSandboxId.length > 0;
-    
-    if (shouldPoll) {
-      // Start polling if not already active
-      if (!pollingIntervalRef.current) {
-        pollingIntervalRef.current = setInterval(async () => {
-          try {
-            const response = await fetch('/api/projects', {
-              credentials: 'include'
-            });
-            if (response.ok) {
-              const data = await response.json();
-              
-              // Only check Daytona API status for projects with "started" database status
-              const updatedProjects = [...data];
-              for (const project of data.filter(p => p.sandboxId && p.sandboxStatus === 'started')) {
-                try {
-                  const statusResponse = await fetch(`/api/projects/${project.id}/sandbox/status`, {
-                    credentials: 'include'
-                  });
-                  if (statusResponse.ok) {
-                    const statusData = await statusResponse.json();
-                    
-                    // Update the project's sandbox status with live Daytona status
-                    const projectIndex = updatedProjects.findIndex(p => p.id === project.id);
-                    if (projectIndex !== -1) {
-                      updatedProjects[projectIndex].sandboxStatus = statusData.status;
-                      if (statusData.previewUrl) {
-                        updatedProjects[projectIndex].previewUrl = statusData.previewUrl;
-                      }
-                    }
-                  }
-                } catch (error) {
-                  console.error(`Error checking sandbox status for project ${project.id}:`, error);
-                }
-              }
-              
-              // Filter out projects being deleted and update projects with live status data
-              const filteredProjects = updatedProjects.filter(project => !deletingProjects.has(project.id));
-              setProjects(filteredProjects);
-              
-              // Check if we should stop polling (only stop if no creating projects)
-              const stillCreating = data.filter(p => p.sandboxStatus === 'creating');
-              if (stillCreating.length === 0 && projectsWithCreatingStatus.length > 0) {
-                clearInterval(pollingIntervalRef.current);
-                pollingIntervalRef.current = null;
-              }
-            } else {
-              console.error('API request failed:', response.status, response.statusText);
-            }
-          } catch (error) {
-            console.error('Error polling for project updates:', error);
-          }
-        }, 5000); // Poll every 5 seconds for better debugging
-      }
-    } else {
-      // Stop polling if no projects are creating
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
-      }
+    // Clean up any existing polling intervals
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
     }
-  }, [projects, deletingProjects]);
+  }, []);
 
   // Cleanup effect
   useEffect(() => {
@@ -244,6 +262,7 @@ export const useProjects = () => {
     handleToggleStar,
     handleCreateProject,
     handleDeleteProject,
-    refreshProjects: fetchProjects
+    refreshProjects: fetchProjects,
+    refreshWithWebhook: () => refreshWithWebhook(false)
   };
 };
