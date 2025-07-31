@@ -321,12 +321,21 @@ CREATE TABLE projects (
 **Enhanced Workflow**:
 1. **Session Loading**: Check for existing Supabase session on node initialization
 2. **WebSocket Connection**: Establish connection with auto-reconnection and status tracking
-3. **Message Sending**: User messages saved to Supabase and sent via WebSocket
-4. **Claude Execution**: Enhanced prompts with project context, directory awareness, and tool restrictions
-5. **Session Continuity**: Claude CLI session IDs preserved across conversations for context
-6. **Real-time Streaming**: JSON-buffered output parsing with complete message handling
-7. **Message Persistence**: All messages automatically saved to Supabase for session history
-8. **UI Rendering**: Rich message bubbles with type-specific styling and interaction features
+3. **Initial Message Handling**: Smart storage system for messages sent before session ID is available
+4. **Message Sending**: User messages conditionally saved to Supabase based on session availability
+5. **Claude Execution**: Enhanced prompts with project context, directory awareness, and tool restrictions
+6. **Session ID Reception**: Session ID received from Claude CLI triggers database session creation
+7. **Stored Message Processing**: Initial messages automatically saved to database when session becomes available
+8. **Session Continuity**: Claude CLI session IDs preserved across conversations for context
+9. **Real-time Streaming**: JSON-buffered output parsing with complete message handling
+10. **Message Persistence**: All messages automatically saved to Supabase for session history
+11. **UI Rendering**: Rich message bubbles with type-specific styling and interaction features
+
+**Initial Message Storage System**:
+- **Problem Solved**: Race condition where users could send messages before Claude CLI establishes session ID
+- **Solution**: Client-side storage of initial message with automatic database insertion when session ID becomes available
+- **Implementation**: Uses React refs (`initialTextRef`) to store first message, then saves to database via direct API call when WebSocket receives session ID
+- **Benefits**: No lost messages, seamless user experience, reliable message persistence
 
 **Chat Session API Endpoints**:
 - `GET /api/chat-sessions?nodeId=<nodeId>&projectId=<projectId>` - Fetch chat sessions for a node
@@ -554,13 +563,16 @@ CREATE TABLE projects (
 - `src/components/flow/Canvas.js` - Major refactor with ref-based state management
 - `src/components/layout/Sidebar.js` - Updated to Next.js Image component, removed unused imports
 - `src/hooks/useClaudeWebSocket.js` - Added useCallback wrapper, fixed deprecated API usage
-- `src/components/nodes/aichat/index.js` - Fixed useEffect dependencies
+- `src/components/nodes/aichat/index.js` - Fixed useEffect dependencies, implemented initial message storage system
 - `src/services/sandboxService.js` - Removed legacy `createSandbox` function
 - `app/api/projects/[id]/sandbox/retry/route.js` - Simplified retry logic to use background job queue
+- `app/api/chat-sessions/route.js` - Fixed race condition in session creation with upsert pattern
 
 **Files Removed**:
 - `src/hooks/useSSE.js` - Unused Server-Sent Events hook
 - `app/api/webhook/sse/route.js` - Unused SSE API endpoint
+- `app/api/ai-chat/route.js` - Legacy HTTP streaming AI chat endpoint (replaced by WebSocket implementation)
+- `app/api/ai-chat/` - Empty directory removed
 
 **Quality Metrics**:
 - **ESLint Status**: ✅ 0 warnings, 0 errors
@@ -580,3 +592,6 @@ CREATE TABLE projects (
 - Achieved zero ESLint warnings across entire codebase
 - Removed unused SSE system and legacy sandbox creation code for cleaner architecture
 - Simplified retry logic to use background job queue system consistently
+- Fixed AI chat initial message storage race condition with React refs and direct API calls
+- Removed legacy HTTP streaming AI chat API in favor of WebSocket-only implementation
+- Cleaned up all debug logging while preserving essential error logging for production
