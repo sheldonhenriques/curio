@@ -227,3 +227,32 @@ class ASTIdInjector {
 }
 
 module.exports = ASTIdInjector;
+
+// CLI functionality for standalone usage
+if (require.main === module) {
+  const args = process.argv.slice(2);
+  
+  if (args.length === 0) {
+    console.error('Usage: node astIdInjector.js <target-directory>');
+    process.exit(1);
+  }
+  
+  const targetDir = args[0];
+  
+  if (!fs.existsSync(targetDir)) {
+    console.error(`Directory does not exist: ${targetDir}`);
+    process.exit(1);
+  }
+  
+  console.log(`🔧 Starting AST ID injection for directory: ${targetDir}`);
+  
+  const injector = new ASTIdInjector();
+  
+  try {
+    injector.processDirectory(targetDir);
+    console.log('✅ AST ID injection completed successfully');
+  } catch (error) {
+    console.error('❌ AST ID injection failed:', error.message);
+    process.exit(1);
+  }
+}

@@ -239,7 +239,7 @@ export default function AIChatNode({ id, data, selected, ...props }) {
                 console.error('Failed to save message to session:', error)
             }
         }
-    }, [getSessionId, session, saveMessage])
+    }, [getSessionId, saveMessage])
 
     // WebSocket message handler
     useEffect(() => {
@@ -335,7 +335,15 @@ export default function AIChatNode({ id, data, selected, ...props }) {
                     
                     if (newMessage) {
                         setMessages(prev => [...prev, newMessage])
-                        saveMessageToSession(newMessage)
+                        
+                        // Check if we have a session ID, if not, add to pending messages
+                        const currentSessionId = getSessionId()
+                        if (currentSessionId) {
+                            saveMessageToSession(newMessage)
+                        } else {
+                            // Add to pending messages to save later when session is created
+                            pendingMessagesRef.current.push(newMessage)
+                        }
                     }
                     break
 
@@ -357,7 +365,18 @@ export default function AIChatNode({ id, data, selected, ...props }) {
                                 // After creating session, save any pending messages
                                 const messagesToSave = [...pendingMessagesRef.current]
                                 pendingMessagesRef.current = []
-                                messagesToSave.forEach(msg => saveMessageToSession(msg))
+                                messagesToSave.forEach(msg => {
+                                    // Use the session ID directly instead of relying on getSessionId()
+                                    saveMessage(message.sessionId, {
+                                        id: msg.id,
+                                        type: msg.type,
+                                        content: msg.content,
+                                        timestamp: msg.timestamp,
+                                        metadata: msg.metadata || {}
+                                    }).catch((error) => {
+                                        console.error('Failed to save pending message:', error)
+                                    })
+                                })
                                 
                                 // Save stored initial message to DB if available
                                 if (initialTextRef.current) {
@@ -369,7 +388,7 @@ export default function AIChatNode({ id, data, selected, ...props }) {
                                         timestamp: initialTextRef.current.timestamp,
                                         metadata: initialTextRef.current.metadata || {}
                                     }).catch((error) => {
-                                        console.error('Failed to save stored initial message:', error)
+                                        console.error('Failed to save initial message:', error)
                                     })
                                     initialTextRef.current = null // Clear after saving
                                 }
@@ -388,7 +407,14 @@ export default function AIChatNode({ id, data, selected, ...props }) {
                             timestamp: new Date()
                         }
                         setMessages(prev => [...prev, completionMessage])
-                        saveMessageToSession(completionMessage)
+                        
+                        // Check if we have a session ID, if not, add to pending messages
+                        const currentSessionId = getSessionId()
+                        if (currentSessionId) {
+                            saveMessageToSession(completionMessage)
+                        } else {
+                            pendingMessagesRef.current.push(completionMessage)
+                        }
                     }
                     setIsLoading(false)
                     break
@@ -402,7 +428,14 @@ export default function AIChatNode({ id, data, selected, ...props }) {
                         timestamp: new Date()
                     }
                     setMessages(prev => [...prev, errorMessage])
-                    saveMessageToSession(errorMessage)
+                    
+                    // Check if we have a session ID, if not, add to pending messages
+                    const currentSessionId = getSessionId()
+                    if (currentSessionId) {
+                        saveMessageToSession(errorMessage)
+                    } else {
+                        pendingMessagesRef.current.push(errorMessage)
+                    }
                     setIsLoading(false)
                     break
             }

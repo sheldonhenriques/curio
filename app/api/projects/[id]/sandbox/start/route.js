@@ -1,23 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { startSandbox } from '@/services/sandboxService';
-
-const findProjectWithSandbox = async (supabase, id, userId) => {
-  const { data: project, error } = await supabase
-    .from('projects')
-    .select('*')
-    .eq('id', parseInt(id))
-    .eq('user_id', userId)
-    .single();
-
-  if (error || !project) {
-    throw new Error('Project not found');
-  }
-  if (!project.sandbox_id) {
-    throw new Error('No sandbox associated with this project');
-  }
-  return project;
-};
+import { findProjectWithSandbox } from '@/utils/sandbox/helpers';
 
 export async function POST(_request, { params }) {
   try {

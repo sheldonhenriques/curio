@@ -1,5 +1,27 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { filterProjects } from '@/utils/projectFilters';
+
+const filterProjects = (projects, searchTerm, activeTab) => {
+  let filtered = projects;
+  
+  // Filter by search term
+  if (searchTerm) {
+    filtered = filtered.filter(project => 
+      project.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      project.description?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }
+  
+  // Filter by tab
+  switch (activeTab) {
+    case 'starred':
+      filtered = filtered.filter(project => project.starred);
+      break;
+    default: // 'all'
+      break;
+  }
+  
+  return filtered;
+};
 import { useSocket } from './useSocket';
 
 export const useProjects = () => {
@@ -141,7 +163,7 @@ export const useProjects = () => {
   }, []);
 
   const filteredProjects = useMemo(() => {
-    return filterProjects(projects, activeTab, searchTerm);
+    return filterProjects(projects, searchTerm, activeTab);
   }, [projects, activeTab, searchTerm]);
 
   const handleToggleStar = async (projectId) => {

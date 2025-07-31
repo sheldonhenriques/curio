@@ -1,19 +1,19 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/utils/supabase/server';
 import { scheduleSandboxCreation } from '@/services/backgroundJobs';
+import { getAuthenticatedUser } from '@/utils/auth/apiAuth';
 
 export async function GET() {
   try {
-    const supabase = await createClient();
+    const authResult = await getAuthenticatedUser();
     
-    // Check if user is authenticated
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
+    if (!authResult) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       );
     }
+    
+    const { user, supabase } = authResult;
 
     // Fetch user's projects
     const { data: projects, error } = await supabase
@@ -59,16 +59,16 @@ export async function GET() {
 
 export async function POST(request) {
   try {
-    const supabase = await createClient();
+    const authResult = await getAuthenticatedUser();
     
-    // Check if user is authenticated
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
+    if (!authResult) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       );
     }
+    
+    const { user, supabase } = authResult;
 
     const body = await request.json();
     

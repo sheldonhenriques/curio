@@ -419,10 +419,10 @@ async function injectASTIds(sandbox, projectDir) {
   try {
     
     // Step 1: Read the AST injector script from our local file
-    const astInjectorPath = path.resolve(process.cwd(), 'src/services/ast-injector.js');
+    const astInjectorPath = path.resolve(process.cwd(), 'src/services/astIdInjector.js');
     const astInjectorContent = fs.readFileSync(astInjectorPath, 'utf8');
     
-    const sandboxScriptPath = `${projectDir}/ast-injector.js`;
+    const sandboxScriptPath = `${projectDir}/astIdInjector.js`;
     
     // Step 2: Write the script to the sandbox using heredoc (no escaping issues)
     const writeScriptCommand = `cat > "${sandboxScriptPath}" << 'CURIO_EOF'
@@ -438,7 +438,7 @@ CURIO_EOF`;
     
     // Step 3: Execute the script in the sandbox
     const executeResult = await sandbox.process.executeCommand(
-      `node ast-injector.js "${projectDir}"`,
+      `node astIdInjector.js "${projectDir}"`,
       projectDir,
       undefined,
       180

@@ -19,8 +19,6 @@ import AIChatNode from "@/components/nodes/aichat"
 import FloatingPropertyPanel from "@/components/flow/FloatingPropertyPanel"
 import { useProjectNodes } from '@/hooks/useProjectNodes'
 import { useAuth } from '@/hooks/useAuth'
-import { nodeLocalStorage } from '@/services/nodeLocalStorage'
-import { useNodeSync } from '@/hooks/useNodeSync'
 
 // Create context for property panel state
 const PropertyPanelContext = createContext()
@@ -60,14 +58,6 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
     createDefaultAIChatNode
   } = useProjectNodes(project?.id, user?.id);
 
-  // Initialize periodic sync for node positions/dimensions
-  const { forceSyncCurrentProject } = useNodeSync({
-    interval: 10000, // 10 seconds
-    updateNode,
-    projectId: project?.id,
-    userId: user?.id,
-    enabled: !!(project?.id && user?.id && updateNode)
-  });
 
   // Create project-specific nodes with sandbox integration and local storage positions
   const projectNodes = useMemo(() => {
@@ -83,20 +73,9 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
 
     // Use database nodes and update them with current project context
     return dbNodes.map(node => {
-      // Get local storage data for this node
-      const localNodeData = nodeLocalStorage.getNodeData(project.id, node.id);
+      // Removed local storage functionality - positions are now stored in database
       
       let updatedNode = { ...node };
-      
-      // Apply local storage position and style if available (prioritize local changes)
-      if (localNodeData) {
-        if (localNodeData.position) {
-          updatedNode.position = localNodeData.position;
-        }
-        if (localNodeData.style) {
-          updatedNode.style = { ...updatedNode.style, ...localNodeData.style };
-        }
-      }
 
       // Update webserver nodes with the sandbox preview URL and status
       if (node.type === 'webserverNode') {
@@ -140,18 +119,9 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
     if (project?.id) {
       changes.forEach(change => {
         if (change.type === 'position' && change.position) {
-          // Store position in local storage immediately
-          nodeLocalStorage.setNodeData(project.id, change.id, {
-            position: change.position
-          });
+          // Position changes are now handled by database
         } else if (change.type === 'dimensions' && change.dimensions) {
-          // Store dimensions in local storage immediately
-          nodeLocalStorage.setNodeData(project.id, change.id, {
-            style: { 
-              width: change.dimensions.width, 
-              height: change.dimensions.height 
-            }
-          });
+          // Dimension changes are now handled by database
         }
         // Add more change types as needed (select, remove, etc.)
       });
@@ -366,21 +336,6 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
     setSelectedElement(null)
   }, [])
 
-  // Force sync when page becomes visible (user switches back to tab)
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (!document.hidden && project?.id) {
-        // Force sync when user returns to the tab
-        forceSyncCurrentProject();
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [project?.id, forceSyncCurrentProject]);
 
   // Cleanup timeouts on component unmount
   useEffect(() => {
