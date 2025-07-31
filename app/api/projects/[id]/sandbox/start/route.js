@@ -36,6 +36,32 @@ export async function POST(_request, { params }) {
     const project = await findProjectWithSandbox(supabase, id, user.id);
     const result = await startSandbox(project.sandbox_id);
     
+    // Broadcast to both WebSocket systems
+    try {
+      // 1. Broadcast to project rooms (for project pages)
+      if (global.broadcastSandboxStatus && result.status === 'started') {
+        global.broadcastSandboxStatus(id, result.status, result.previewUrl);
+      }
+
+      // 2. Broadcast to user rooms (for dashboard)
+      if (global.socketIO && user.id) {
+        const room = `user-${user.id}`;
+        global.socketIO.to(room).emit('project_status_update', {
+          type: 'project_status_update',
+          projectId: parseInt(id),
+          status: result.status,
+          previewUrl: result.previewUrl,
+          timestamp: Date.now()
+        });
+        
+        const clientsInRoom = global.socketIO.sockets.adapter.rooms.get(room);
+        const broadcastCount = clientsInRoom ? clientsInRoom.size : 0;
+        console.log(`📡 Dashboard broadcast sent to ${broadcastCount} clients for project ${id}`);
+      }
+    } catch (broadcastError) {
+      console.warn('WebSocket broadcast error:', broadcastError);
+    }
+    
     return NextResponse.json({
       success: true,
       sandboxId: project.sandbox_id,

@@ -408,18 +408,38 @@ IMPORTANT CONTEXT:
       jsonBuffers.delete(socket.id);
     });
 
-    // Handle room joining (for user-specific updates)
+    // Handle room joining (for user-specific and project-specific updates)
     socket.on('join', (data) => {
-      const { userId } = data;
+      const { userId, projectId } = data;
       if (userId) {
         socket.join(`user-${userId}`);
         console.log(`🔌 Socket ${socket.id} joined user room: user-${userId}`);
+      }
+      if (projectId) {
+        socket.join(`project-${projectId}`);
+        console.log(`🔌 Socket ${socket.id} joined project room: project-${projectId}`);
       }
     });
   });
 
   // Store Socket.IO instance globally for broadcast access
   global.socketIO = io;
+
+  // Function to broadcast sandbox status updates to all clients in a project room
+  global.broadcastSandboxStatus = (projectId, status, previewUrl = null, error = null) => {
+    if (io) {
+      const message = {
+        type: 'sandbox_status_update',
+        projectId,
+        status,
+        previewUrl,
+        error,
+        timestamp: Date.now()
+      };
+      io.to(`project-${projectId}`).emit('sandbox-status', message);
+      console.log(`📡 Broadcasting sandbox status update: ${projectId} -> ${status}`);
+    }
+  };
 
   server.once('error', (err) => {
     console.error('Server error:', err);

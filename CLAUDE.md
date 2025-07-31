@@ -580,6 +580,68 @@ CREATE TABLE projects (
 - **Runtime Errors**: ✅ No initialization or circular dependency errors
 - **Performance**: ✅ Optimized with stable function references
 
+## Dual WebSocket System Architecture
+
+**Current Status**: ✅ **IMPLEMENTED AND WORKING**
+
+**Overview**: The application uses two separate WebSocket systems for different purposes, both running on the same Socket.IO server but with distinct room structures and event types.
+
+### Separate WebSocket Implementations
+
+**1. Dashboard WebSocket System** (`src/hooks/useSocket.js`):
+- **Purpose**: Real-time project updates for the dashboard page
+- **Room Structure**: User-specific rooms (`user-${userId}`)  
+- **Events**: Listens for `project_status_update` events
+- **Transport**: Polling-only for GitHub Codespaces stability
+- **Usage**: Dashboard project cards, status indicators, real-time project list updates
+
+**2. Project Page WebSocket System** (`src/hooks/useSandboxWebSocket.js`):
+- **Purpose**: Real-time sandbox status updates for individual project pages
+- **Room Structure**: Project-specific rooms (`project-${projectId}`)
+- **Events**: Listens for `sandbox-status` events  
+- **Transport**: WebSocket + polling with auto-reconnection
+- **Usage**: Project page sandbox status, startup progress, error states
+
+### Unified Broadcasting System
+
+**Server Implementation** (`server.js`):
+- Single Socket.IO server handles both WebSocket systems
+- Global broadcast functions for both systems:
+  - `global.broadcastSandboxStatus()` - Broadcasts to project rooms
+  - `global.socketIO.to(user-${userId}).emit('project_status_update')` - Broadcasts to user rooms
+
+**Unified Broadcast Function** (`src/services/backgroundJobs.js`):
+- `broadcastToAllSystems()` function broadcasts to both WebSocket systems simultaneously
+- **No HTTP calls** - directly uses global Socket.IO instance
+- **No hardcoded URLs** - everything happens in-process
+- Handles both project room and user room broadcasts in a single function call
+
+### Integration Points
+
+**Background Jobs** (`src/services/backgroundJobs.js`):
+- All sandbox status updates broadcast to both systems
+- Handles `creating`, `started`, `failed` statuses
+- Uses unified broadcast function for consistency
+
+**API Routes**:
+- `/api/projects/[id]/sandbox/start` - Broadcasts start events to both systems
+- `/api/projects/[id]/sandbox/stop` - Broadcasts stop events to both systems
+- Direct Socket.IO calls instead of HTTP webhook endpoints
+
+**Benefits of Architecture**:
+- ✅ **Separate Concerns**: Dashboard and project page logic remain independent
+- ✅ **No Network Overhead**: In-process broadcasting instead of HTTP calls
+- ✅ **Better Reliability**: No network failures or hardcoded localhost URLs
+- ✅ **Single Broadcast Point**: Easier maintenance and debugging
+- ✅ **Real-time Updates**: Both dashboard and project pages get instant status updates
+
+**Key Files**:
+- `src/hooks/useSocket.js` - Dashboard WebSocket hook
+- `src/hooks/useSandboxWebSocket.js` - Project page WebSocket hook  
+- `src/services/backgroundJobs.js` - Unified broadcasting system
+- `server.js` - Socket.IO server with dual room management
+- `app/api/projects/[id]/sandbox/` - API routes with dual broadcasting
+
 ## Memories
 
 - Built comprehensive project management system using Supabase for all data storage
@@ -595,3 +657,4 @@ CREATE TABLE projects (
 - Fixed AI chat initial message storage race condition with React refs and direct API calls
 - Removed legacy HTTP streaming AI chat API in favor of WebSocket-only implementation
 - Cleaned up all debug logging while preserving essential error logging for production
+- **Fixed dual WebSocket system**: Restored dashboard notifications by implementing unified broadcasting that sends updates to both user rooms (dashboard) and project rooms (project pages) without hardcoded localhost URLs or HTTP overhead

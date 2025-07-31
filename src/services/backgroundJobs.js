@@ -1,37 +1,36 @@
 import { createSandboxWithId } from './sandboxService.js';
 import { createClient } from '@supabase/supabase-js';
 
-// Function to send webhook notifications for real-time dashboard updates
-async function sendWebhookUpdate(projectId, status, userId) {
+// Unified function to broadcast to both WebSocket systems
+function broadcastToAllSystems(projectId, status, userId, previewUrl = null, error = null) {
   try {
-    // Send WebSocket broadcast to dashboard clients
-    const webhookPayload = {
-      type: 'project_status_update',
-      projectId: projectId,
-      status: status,
-      userId: userId,
-      timestamp: Date.now()
-    };
-    
-    console.log(`🔔 Webhook update: Project ${projectId} status changed to ${status}`);
-    
-    // Make HTTP request to WebSocket server endpoint for broadcasting
-    try {
-      await fetch('http://localhost:3000/api/webhook/broadcast', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(webhookPayload)
-      });
-    } catch (broadcastError) {
-      console.warn('⚠️ Failed to broadcast webhook update:', broadcastError.message);
-      // Don't throw - webhook failure shouldn't break sandbox creation
+    // 1. Broadcast to project rooms (for project pages)
+    if (global.broadcastSandboxStatus) {
+      global.broadcastSandboxStatus(projectId, status, previewUrl, error);
+    } else {
+      console.warn('⚠️ Project WebSocket broadcast function not available');
     }
-    
+
+    // 2. Broadcast to user rooms (for dashboard)
+    if (global.socketIO && userId) {
+      const room = `user-${userId}`;
+      global.socketIO.to(room).emit('project_status_update', {
+        type: 'project_status_update',
+        projectId: parseInt(projectId),
+        status,
+        previewUrl,
+        timestamp: Date.now()
+      });
+      
+      const clientsInRoom = global.socketIO.sockets.adapter.rooms.get(room);
+      const broadcastCount = clientsInRoom ? clientsInRoom.size : 0;
+      console.log(`📡 Dashboard broadcast sent to ${broadcastCount} clients for project ${projectId}`);
+    } else {
+      console.warn('⚠️ Dashboard WebSocket broadcast not available (no socketIO or userId)');
+    }
   } catch (error) {
-    console.error('❌ Error sending webhook update:', error);
-    // Don't throw - webhook failure shouldn't break sandbox creation
+    console.error('❌ Error broadcasting to WebSocket systems:', error);
+    // Don't throw - broadcast failure shouldn't break sandbox creation
   }
 }
 
@@ -124,8 +123,8 @@ export const createSandboxJob = async (projectId, projectTitle, userId) => {
         if (error) {
           console.error(`❌ Error updating project ${projectId} status to ${status}:`, error);
         } else {
-          // Send webhook notification for real-time dashboard updates
-          await sendWebhookUpdate(projectId, status, userId);
+          // Broadcast to both WebSocket systems
+          broadcastToAllSystems(projectId, status, userId);
         }
       } catch (err) {
         console.error(`❌ Exception updating project ${projectId} status:`, err);
@@ -167,8 +166,8 @@ export const createSandboxJob = async (projectId, projectTitle, userId) => {
           })
           .eq('id', projectId);
           
-        // Send final webhook notification for the completed setup
-        await sendWebhookUpdate(projectId, 'started', userId);
+        // Broadcast to both WebSocket systems
+        broadcastToAllSystems(projectId, 'started', userId, setupResult.previewUrl);
       })
       .catch(async (setupError) => {
         console.error(`❌ Setup failed for sandbox ${sandboxId}:`, setupError);
@@ -182,6 +181,9 @@ export const createSandboxJob = async (projectId, projectTitle, userId) => {
             updated_at: new Date().toISOString()
           })
           .eq('id', projectId);
+          
+        // Broadcast to both WebSocket systems
+        broadcastToAllSystems(projectId, 'failed', userId, null, `Setup failed: ${setupError.message}`);
       });
     
     return {

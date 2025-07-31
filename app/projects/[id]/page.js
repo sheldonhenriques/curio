@@ -13,6 +13,7 @@ const SANDBOX_STARTUP_STEPS = [
   { id: 'complete', label: 'Sandbox ready!' }
 ];
 import { useSandboxTimeout } from '@/hooks/useSandboxTimeout';
+import { useSandboxWebSocket } from '@/hooks/useSandboxWebSocket';
 
 export default function ProductPage({ params }) {
   const [id, setId] = useState(null);
@@ -35,6 +36,21 @@ export default function ProductPage({ params }) {
 
   // Set up inactivity timeout for sandbox
   const { resetTimeout, clearTimeout } = useSandboxTimeout(id, sandboxStatus);
+
+  // WebSocket status update handler
+  const handleSandboxStatusUpdate = useCallback((update) => {
+    console.log('📡 Received sandbox status update:', update);
+    setSandboxStatus(update.status);
+    if (update.previewUrl) {
+      setPreviewUrl(update.previewUrl);
+    }
+    if (update.error) {
+      setError(update.error);
+    }
+  }, []);
+
+  // Set up WebSocket connection for real-time sandbox status updates
+  useSandboxWebSocket(id, handleSandboxStatusUpdate);
 
   // Listen for sandbox stopped event
   useEffect(() => {
@@ -146,58 +162,35 @@ export default function ProductPage({ params }) {
     loadProject();
   }, [id, startSandbox]);
 
-  // Polling effect for sandbox status updates
+  // Fallback polling for initial status check (reduced frequency since WebSocket handles real-time updates)
   useEffect(() => {
     if (!id || !project) return;
     
-    // Poll if project has a sandboxId OR is in a transitional state
+    // Only poll during transitional states as a fallback
     const hasTransitionalStatus = sandboxStatus === 'creating' || sandboxStatus === 'starting' || isStartingSandbox;
-    const hasSandboxId = !!project.sandboxId;
-    const shouldPoll = hasTransitionalStatus || hasSandboxId;
     
-    
-    if (shouldPoll) {
+    if (hasTransitionalStatus) {
       if (!statusPollingIntervalRef.current) {
         statusPollingIntervalRef.current = setInterval(async () => {
           try {
-            // Check both project data and sandbox status
-            const promises = [
-              fetch(`/api/projects/${id}`, {
-                credentials: 'include'
-              })
-            ];
-            
-            // Only check sandbox status if project has sandboxId
-            if (project.sandboxId) {
-              promises.push(fetch(`/api/projects/${id}/sandbox/status`, {
-                credentials: 'include'
-              }));
-            }
-            
-            const responses = await Promise.all(promises);
-            const [projectResponse, statusResponse] = responses;
+            // Light polling as fallback - only check project data
+            const projectResponse = await fetch(`/api/projects/${id}`, {
+              credentials: 'include'
+            });
             
             if (projectResponse.ok) {
               const projectData = await projectResponse.json();
               setProject(projectData);
               
-              // Update sandbox status from project data
+              // Update sandbox status from project data if WebSocket missed it
               if (projectData.sandboxStatus && projectData.sandboxStatus !== sandboxStatus) {
                 setSandboxStatus(projectData.sandboxStatus);
               }
             }
-            
-            if (statusResponse && statusResponse.ok) {
-              const statusData = await statusResponse.json();
-              setSandboxStatus(statusData.status);
-              if (statusData.previewUrl) {
-                setPreviewUrl(statusData.previewUrl);
-              }
-            }
           } catch (error) {
-            console.error('Error polling sandbox status:', error);
+            console.error('Error polling sandbox status (fallback):', error);
           }
-        }, 30000); // Poll every 30 seconds to reduce conflicts with local storage
+        }, 60000); // Reduced to 60 seconds since WebSocket handles real-time updates
       }
     } else {
       // Stop polling if not needed
