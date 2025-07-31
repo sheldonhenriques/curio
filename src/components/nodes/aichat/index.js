@@ -165,7 +165,7 @@ function MessageBubble({ message, formatTime }) {
 
     return null
 }
-
+// remember to clean old implementation of ai-chat ws
 export default function AIChatNode({ id, data, selected, ...props }) {
     const [messages, setMessages] = useState([])
     const [inputValue, setInputValue] = useState("")
@@ -173,6 +173,8 @@ export default function AIChatNode({ id, data, selected, ...props }) {
     const [connectionStatus, setConnectionStatus] = useState('disconnected')
     const messagesEndRef = useRef(null)
     const inputRef = useRef(null)
+    const pendingMessagesRef = useRef([]) // Track messages that need to be saved once session is created
+    const initialTextRef = useRef(null) // Store initial text when no session ID
     const { isConnected, connectionError, sendMessage, subscribe, reconnect } = useClaudeWebSocket()
     const { session, createSession, clearSession, getMessages, getSessionId, hasSession, saveMessage, loadMessages } = useChatSession(id, data?.projectId)
 
@@ -224,7 +226,7 @@ export default function AIChatNode({ id, data, selected, ...props }) {
     // Helper function to save message to session
     const saveMessageToSession = useCallback(async (message) => {
         const sessionId = getSessionId()
-        if (sessionId && session) {
+        if (sessionId) {
             try {
                 await saveMessage(sessionId, {
                     id: message.id,
@@ -351,7 +353,27 @@ export default function AIChatNode({ id, data, selected, ...props }) {
                     if (message.sessionId) {
                         // Create session with Claude's session ID if we don't have one
                         if (!hasSession()) {
-                            createSession(message.sessionId)
+                            createSession(message.sessionId).then(() => {
+                                // After creating session, save any pending messages
+                                const messagesToSave = [...pendingMessagesRef.current]
+                                pendingMessagesRef.current = []
+                                messagesToSave.forEach(msg => saveMessageToSession(msg))
+                                
+                                // Save stored initial message to DB if available
+                                if (initialTextRef.current) {
+                                    // Use the session ID directly instead of relying on getSessionId()
+                                    saveMessage(message.sessionId, {
+                                        id: initialTextRef.current.id,
+                                        type: initialTextRef.current.type,
+                                        content: initialTextRef.current.content,
+                                        timestamp: initialTextRef.current.timestamp,
+                                        metadata: initialTextRef.current.metadata || {}
+                                    }).catch((error) => {
+                                        console.error('Failed to save stored initial message:', error)
+                                    })
+                                    initialTextRef.current = null // Clear after saving
+                                }
+                            })
                         }
                     }
                     break
@@ -417,7 +439,17 @@ export default function AIChatNode({ id, data, selected, ...props }) {
         }
         
         setMessages(prev => [...prev, userMessage])
-        saveMessageToSession(userMessage)
+
+        // Check if we have a session ID
+        const currentSessionId = getSessionId()
+        
+        if (currentSessionId) {
+            // Save to DB immediately if we have session ID
+            saveMessageToSession(userMessage)
+        } else {
+            // Store initial user message for later DB insertion
+            initialTextRef.current = userMessage
+        }
 
         // Send message via WebSocket
         const success = sendMessage({
@@ -425,7 +457,7 @@ export default function AIChatNode({ id, data, selected, ...props }) {
             prompt,
             projectId: data?.projectId,
             nodeId: id,
-            sessionId: getSessionId()
+            sessionId: currentSessionId
         })
 
         if (!success) {

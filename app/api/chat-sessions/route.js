@@ -86,81 +86,65 @@ export async function POST(request) {
       }, { status: 400 });
     }
     
-    // Check if session already exists
-    const { data: existingSession, error: fetchError } = await supabase
+    // Use upsert pattern to handle race conditions
+    const { data: session, error: upsertError } = await supabase
       .from('chat_sessions')
-      .select(`
-        *,
-        messages (count)
-      `)
-      .eq('session_id', sessionId)
-      .eq('user_id', user.id)
-      .single();
-    
-    if (existingSession && !fetchError) {
-      // If session exists and is active, return it
-      if (existingSession.is_active) {
-        return Response.json({ 
-          message: 'Session already exists',
-          session: {
-            sessionId: existingSession.session_id,
-            nodeId: existingSession.node_id,
-            projectId: existingSession.project_id,
-            createdAt: existingSession.created_at,
-            updatedAt: existingSession.updated_at,
-            isActive: existingSession.is_active,
-            messageCount: existingSession.messages?.[0]?.count || 0
-          }
-        }, { status: 200 });
-      } else {
-        // Reactivate existing session
-        const { data: reactivatedSession, error: updateError } = await supabase
-          .from('chat_sessions')
-          .update({ is_active: true })
-          .eq('id', existingSession.id)
-          .select()
-          .single();
-        
-        if (updateError) {
-          console.error('Error reactivating session:', updateError);
-          return Response.json({ error: 'Internal server error' }, { status: 500 });
-        }
-        
-        return Response.json({ 
-          message: 'Session reactivated',
-          session: {
-            sessionId: reactivatedSession.session_id,
-            nodeId: reactivatedSession.node_id,
-            projectId: reactivatedSession.project_id,
-            createdAt: reactivatedSession.created_at,
-            updatedAt: reactivatedSession.updated_at,
-            isActive: reactivatedSession.is_active,
-            messageCount: existingSession.messages?.[0]?.count || 0
-          }
-        }, { status: 200 });
-      }
-    }
-    
-    // Create new session
-    const { data: session, error: createError } = await supabase
-      .from('chat_sessions')
-      .insert([{
+      .upsert({
         session_id: sessionId,
         user_id: user.id,
         node_id: nodeId,
         project_id: parseInt(projectId),
-        is_active: true
-      }])
-      .select()
+        is_active: true,
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'session_id',
+        ignoreDuplicates: false
+      })
+      .select(`
+        *,
+        messages (count)
+      `)
       .single();
     
-    if (createError) {
-      console.error('Error creating chat session:', createError);
-      return Response.json({ error: 'Internal server error' }, { status: 500 });
+    if (upsertError) {
+      // If upsert failed, try to fetch existing session
+      console.log('Upsert failed, attempting to fetch existing session:', upsertError);
+      
+      const { data: existingSession, error: fetchError } = await supabase
+        .from('chat_sessions')
+        .select(`
+          *,
+          messages (count)
+        `)
+        .eq('session_id', sessionId)
+        .eq('user_id', user.id)
+        .single();
+      
+      if (fetchError || !existingSession) {
+        console.error('Error creating or fetching chat session:', upsertError, fetchError);
+        return Response.json({ error: 'Internal server error' }, { status: 500 });
+      }
+      
+      // Return existing session
+      return Response.json({ 
+        message: 'Session already exists',
+        session: {
+          sessionId: existingSession.session_id,
+          nodeId: existingSession.node_id,
+          projectId: existingSession.project_id,
+          createdAt: existingSession.created_at,
+          updatedAt: existingSession.updated_at,
+          isActive: existingSession.is_active,
+          messageCount: existingSession.messages?.[0]?.count || 0
+        }
+      }, { status: 200 });
     }
     
+    // Determine if this was a creation or update based on timestamps
+    const isNewSession = new Date(session.created_at).getTime() === new Date(session.updated_at).getTime();
+    
     return Response.json({ 
-      message: 'Session created successfully',
+      message: isNewSession ? 'Session created successfully' : 'Session updated successfully',
       session: {
         sessionId: session.session_id,
         nodeId: session.node_id,
@@ -168,9 +152,9 @@ export async function POST(request) {
         createdAt: session.created_at,
         updatedAt: session.updated_at,
         isActive: session.is_active,
-        messageCount: 0
+        messageCount: session.messages?.[0]?.count || 0
       }
-    }, { status: 201 });
+    }, { status: isNewSession ? 201 : 200 });
     
   } catch (error) {
     console.error('Error creating chat session:', error);

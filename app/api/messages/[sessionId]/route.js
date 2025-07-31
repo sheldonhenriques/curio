@@ -10,7 +10,7 @@ export async function POST(request, { params }) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
     
-    const { sessionId } = params;
+    const { sessionId } = await params;
     const { messageId, type, content, metadata } = await request.json();
     
     if (!sessionId || !messageId || !type || !content) {
@@ -38,7 +38,7 @@ export async function POST(request, { params }) {
       .select('id')
       .eq('message_id', messageId)
       .eq('chat_session_id', session.id)
-      .single();
+      .maybeSingle();
     
     if (existingMessage && !existingError) {
       // Message already exists, return success
@@ -93,7 +93,7 @@ export async function GET(request, { params }) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
     
-    const { sessionId } = params;
+    const { sessionId } = await params;
     
     if (!sessionId) {
       return Response.json({ error: 'Session ID is required' }, { status: 400 });

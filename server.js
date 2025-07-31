@@ -1,7 +1,6 @@
 import { createServer } from 'http';
 import { parse } from 'url';
 import next from 'next';
-import { WebSocketServer, WebSocket } from 'ws';
 import { Server as SocketIOServer } from 'socket.io';
 import { Daytona } from '@daytonaio/sdk';
 import { v4 as uuidv4 } from 'uuid';
@@ -36,86 +35,26 @@ app.prepare().then(() => {
     }
   });
 
-  // WebSocket server for AI chat
-  const wss = new WebSocketServer({ 
-    server,
-    path: '/api/claude-ws'
-  });
-
-  wss.on('connection', (ws, req) => {
-    // Initialize JSON buffer for this connection
-    const connectionId = uuidv4();
-    ws.connectionId = connectionId;
-    jsonBuffers.set(connectionId, '');
-
-    // Send initial connection confirmation
-    safeSend(ws, {
-      type: 'connection',
-      message: 'Connected to Claude Code WebSocket'
-    });
-    
-    ws.on('message', async (data) => {
-      try {
-        const message = JSON.parse(data.toString());
-        await handleChatMessage(ws, message);
-      } catch (error) {
-        safeSend(ws, {
-          type: 'error',
-          message: `Failed to process message: ${error.message}`
-        });
-      }
-    });
-
-    ws.on('close', (code, reason) => {
-      // Connection closed - cleanup will happen automatically
-    });
-
-    ws.on('error', () => {
-      // WebSocket error - connection will be closed
-    });
-
-    // Send ping every 30 seconds to keep connection alive
-    const pingInterval = setInterval(() => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.ping();
-      } else {
-        clearInterval(pingInterval);
-      }
-    }, 30000);
-
-    ws.on('close', () => {
-      clearInterval(pingInterval);
-      // Clean up JSON buffer for this connection
-      if (ws.connectionId) {
-        jsonBuffers.delete(ws.connectionId);
-      }
-    });
-  });
-
-  // Helper function to safely send WebSocket messages
-  function safeSend(ws, message) {
-    if (ws.readyState === WebSocket.OPEN) {
-      try {
-        ws.send(JSON.stringify(message));
-        return true;
-      } catch (error) {
-        return false;
-      }
-    } else {
+  // Helper function to safely send Socket.IO messages
+  function safeSend(socket, message) {
+    try {
+      socket.emit('claude-message', message);
+      return true;
+    } catch (error) {
       return false;
     }
   }
 
-  async function handleChatMessage(ws, message) {
+  async function handleChatMessage(socket, message) {
     const { type, prompt, projectId, nodeId, sessionId } = message;
 
     if (type !== 'chat') {
-      safeSend(ws, { type: 'error', message: 'Invalid message type' });
+      safeSend(socket, { type: 'error', message: 'Invalid message type' });
       return;
     }
 
     if (!prompt || !projectId || !nodeId) {
-      safeSend(ws, { type: 'error', message: 'Missing required fields: prompt, projectId, nodeId' });
+      safeSend(socket, { type: 'error', message: 'Missing required fields: prompt, projectId, nodeId' });
       return;
     }
 
@@ -156,7 +95,7 @@ app.prepare().then(() => {
       // Get project directory
       const projectDir = `${await sandbox.getUserRootDir()}/project`;
 
-      await executeClaudeCLI(ws, prompt, sessionKey, sandbox, projectDir, claudeSessionId);
+      await executeClaudeCLI(socket, prompt, sessionKey, sandbox, projectDir, claudeSessionId);
 
       // Update session activity
       chatSessions.set(sessionKey, {
@@ -176,14 +115,14 @@ app.prepare().then(() => {
         errorMessage = 'Sandbox is unavailable. This may be due to inactivity. Please refresh the page to restart the sandbox.';
       }
 
-      safeSend(ws, {
+      safeSend(socket, {
         type: 'error',
         message: errorMessage
       });
     }
   }
 
-  async function executeClaudeCLI(ws, prompt, sessionKey, sandbox, projectDir, claudeSessionId) {
+  async function executeClaudeCLI(socket, prompt, sessionKey, sandbox, projectDir, claudeSessionId) {
     return new Promise(async (resolve, reject) => {
       // Prepare the enhanced prompt with context
       const enhancedPrompt = `${prompt}
@@ -251,19 +190,19 @@ IMPORTANT CONTEXT:
               clearTimeout(streamTimeout);
               // Parse and send the chunk immediately with buffering
               // Completion detection happens in parseClaudeStreamChunk
-              parseClaudeStreamChunkWithBuffering(ws, chunk);
+              parseClaudeStreamChunkWithBuffering(socket, chunk);
             }
           });
           clearTimeout(streamTimeout);
         } catch (streamError) {
-          safeSend(ws, {
+          safeSend(socket, {
             type: 'error',
             message: `Streaming error: ${streamError.message}`
           });
         }
         
         // Send completion signal after streaming ends
-        safeSend(ws, {
+        safeSend(socket, {
           type: 'complete',
           message: ''
         });
@@ -288,13 +227,13 @@ IMPORTANT CONTEXT:
     });
   }
 
-  function parseClaudeStreamChunkWithBuffering(ws, chunk) {
-    if (!chunk || !ws.connectionId) {
+  function parseClaudeStreamChunkWithBuffering(socket, chunk) {
+    if (!chunk || !socket.id) {
       return;
     }
     
-    // Get the current buffer for this connection
-    let buffer = jsonBuffers.get(ws.connectionId) || '';
+    // Get the current buffer for this socket connection
+    let buffer = jsonBuffers.get(socket.id) || '';
     
     // Add new chunk to buffer
     buffer += chunk;
@@ -356,7 +295,7 @@ IMPORTANT CONTEXT:
         
         try {
           const claudeMessage = JSON.parse(jsonStr);
-          processClaudeMessage(ws, claudeMessage);
+          processClaudeMessage(socket, claudeMessage);
         } catch (parseError) {
           // Failed to parse JSON - skip malformed message
         }
@@ -368,15 +307,15 @@ IMPORTANT CONTEXT:
     
     // Update buffer with remaining unprocessed content
     const remainingBuffer = buffer.substring(currentPos);
-    jsonBuffers.set(ws.connectionId, remainingBuffer);
+    jsonBuffers.set(socket.id, remainingBuffer);
     
     // If buffer gets too large (> 100KB), clear it to prevent memory issues
     if (remainingBuffer.length > 100000) {
-      jsonBuffers.set(ws.connectionId, '');
+      jsonBuffers.set(socket.id, '');
     }
   }
 
-  function processClaudeMessage(ws, claudeMessage) {
+  function processClaudeMessage(socket, claudeMessage) {
     // Skip init messages and system setup messages
     if (claudeMessage.type === 'system' && claudeMessage.subtype === 'init') {
       return; // Don't send init messages
@@ -385,7 +324,7 @@ IMPORTANT CONTEXT:
     // Check for completion/final messages
     if (claudeMessage.type === 'result') {
       // Send completion signal when Claude is done (just to stop loading, no bubble)
-      safeSend(ws, {
+      safeSend(socket, {
         type: 'complete',
         message: claudeMessage.result || '' // Send the result message if available
       });
@@ -393,7 +332,7 @@ IMPORTANT CONTEXT:
     }
     
     if (claudeMessage.type === 'system' && claudeMessage.subtype === 'session_end') {
-      safeSend(ws, {
+      safeSend(socket, {
         type: 'complete',
         message: ''
       });
@@ -401,7 +340,7 @@ IMPORTANT CONTEXT:
     }
     
     // Send each JSON message as a separate bubble (this handles all message types)
-    safeSend(ws, {
+    safeSend(socket, {
       type: 'json_message',
       data: claudeMessage,
       timestamp: Date.now()
@@ -409,7 +348,7 @@ IMPORTANT CONTEXT:
     
     // Extract and send session ID updates
     if (claudeMessage.session_id) {
-      safeSend(ws, {
+      safeSend(socket, {
         type: 'session_update',
         sessionId: claudeMessage.session_id
       });
@@ -440,10 +379,33 @@ IMPORTANT CONTEXT:
   // Socket.IO connection handling
   io.on('connection', (socket) => {
     console.log('🔌 Socket.IO client connected:', socket.id);
+    
+    // Initialize JSON buffer for this socket connection
+    jsonBuffers.set(socket.id, '');
+
+    // Send initial connection confirmation for Claude chat
+    socket.emit('claude-message', {
+      type: 'connection',
+      message: 'Connected to Claude Code via Socket.IO'
+    });
+
+    // Handle AI chat messages
+    socket.on('claude-chat', async (message) => {
+      try {
+        await handleChatMessage(socket, message);
+      } catch (error) {
+        socket.emit('claude-message', {
+          type: 'error',
+          message: `Failed to process message: ${error.message}`
+        });
+      }
+    });
 
     // Handle client disconnection
     socket.on('disconnect', (reason) => {
       console.log('🔌 Socket.IO client disconnected:', socket.id, reason);
+      // Clean up JSON buffer for this socket
+      jsonBuffers.delete(socket.id);
     });
 
     // Handle room joining (for user-specific updates)
