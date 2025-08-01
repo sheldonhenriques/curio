@@ -89,11 +89,15 @@ export async function POST(request) {
       sandbox_error: null
     };
     
+    console.log('🔍 Creating project with data:', projectData);
+    
     const { data: project, error: projectError } = await supabase
       .from('projects')
       .insert([projectData])
       .select()
       .single();
+
+    console.log('🔍 Project creation result:', { project, projectError });
 
     if (projectError) {
       console.error('Error creating project:', projectError);

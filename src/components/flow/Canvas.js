@@ -19,6 +19,7 @@ import AIChatNode from "@/components/nodes/aichat"
 import FloatingPropertyPanel from "@/components/flow/FloatingPropertyPanel"
 import { useProjectNodes } from '@/hooks/useProjectNodes'
 import { useAuth } from '@/hooks/useAuth'
+import { useNodeCreationSocket } from '@/hooks/useNodeCreationSocket'
 
 // Create context for property panel state
 const PropertyPanelContext = createContext()
@@ -55,7 +56,8 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
     createNode,
     updateNode,
     deleteNode,
-    createDefaultAIChatNode
+    createDefaultAIChatNode,
+    ensureAIChatNode
   } = useProjectNodes(project?.id, user?.id);
 
 
@@ -79,11 +81,27 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
 
       // Update webserver nodes with the sandbox preview URL and status
       if (node.type === 'webserverNode') {
+        // Construct the full URL by combining the base preview URL with the node's route
+        let fullUrl = updatedNode.data.url; // Keep existing URL as fallback
+        
+        if (previewUrl && updatedNode.data.route) {
+          try {
+            const baseUrl = new URL(previewUrl);
+            const route = updatedNode.data.route.startsWith('/') ? updatedNode.data.route : `/${updatedNode.data.route}`;
+            fullUrl = `${baseUrl.protocol}//${baseUrl.host}${route}`;
+          } catch {
+            // If URL construction fails, fall back to just the preview URL
+            fullUrl = previewUrl;
+          }
+        } else if (previewUrl) {
+          fullUrl = previewUrl;
+        }
+        
         return {
           ...updatedNode,
           data: {
             ...updatedNode.data,
-            url: previewUrl || updatedNode.data.url,
+            url: fullUrl,
             projectName: project.title,
             sandboxStatus: sandboxStatus,
             hasError: !previewUrl && (sandboxStatus === 'failed' || sandboxStatus === 'error')
@@ -161,12 +179,66 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
     });
   }, [projectNodes, setNodes]);
 
-  // Create default AI chat node for new projects (if no nodes exist)
+  // Ensure AI chat node always exists - use ref to prevent multiple calls
+  const hasCheckedAIChatRef = useRef(false);
   useEffect(() => {
-    if (project && user && dbNodes.length === 0 && !nodesLoading && !nodesError) {
-      createDefaultAIChatNode(project);
+    if (project && user && !nodesLoading && !nodesError && !hasCheckedAIChatRef.current) {
+      hasCheckedAIChatRef.current = true;
+      ensureAIChatNode(project);
     }
-  }, [project, user, dbNodes.length, nodesLoading, nodesError, createDefaultAIChatNode]);
+  }, [project, user, dbNodes, nodesLoading, nodesError, ensureAIChatNode]);
+
+  // Handle sandbox status changes - refresh webserver nodes when sandbox becomes ready
+  const previousSandboxStatusRef = useRef(sandboxStatus);
+  useEffect(() => {
+    const previousStatus = previousSandboxStatusRef.current;
+    previousSandboxStatusRef.current = sandboxStatus;
+    
+    // If sandbox just became ready, force refresh all webserver nodes
+    if (previousStatus !== 'started' && sandboxStatus === 'started' && previewUrl) {
+      setNodes(currentNodes => 
+        currentNodes.map(node => {
+          if (node.type === 'webserverNode') {
+            // Reset error states and force iframe refresh by updating URL timestamp
+            const currentUrl = node.data.url || previewUrl;
+            const hasTimestamp = currentUrl.includes('?t=') || currentUrl.includes('&t=');
+            const separator = currentUrl.includes('?') ? '&' : '?';
+            const refreshUrl = hasTimestamp 
+              ? currentUrl.replace(/[?&]t=\d+/, `${separator}t=${Date.now()}`)
+              : `${currentUrl}${separator}t=${Date.now()}`;
+            
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                url: refreshUrl,
+                sandboxStatus: sandboxStatus,
+                hasError: false
+              }
+            };
+          }
+          return node;
+        })
+      );
+    }
+  }, [sandboxStatus, previewUrl, setNodes]);
+
+  // Handle real-time node creation via WebSocket
+  const handleNodeCreated = useCallback((newNode) => {
+    console.log('📡 Adding new node from WebSocket:', newNode);
+    setNodes(prevNodes => {
+      // Check if node already exists to prevent duplicates
+      const exists = prevNodes.some(node => node.id === newNode.id);
+      if (exists) {
+        console.log('🔄 Node already exists, skipping:', newNode.id);
+        return prevNodes;
+      }
+      return [...prevNodes, newNode];
+    });
+  }, [setNodes]);
+
+  // Set up WebSocket listener for real-time node creation
+  useNodeCreationSocket(project?.id, handleNodeCreated);
 
   const onConnect = useCallback(
     (params) => setEdges((eds) => addEdge(params, eds)),

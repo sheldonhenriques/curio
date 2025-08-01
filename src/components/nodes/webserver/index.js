@@ -76,7 +76,25 @@ export default function WebserverNode({ id, data, selected }) {
     setNodes((nodes) =>
       nodes.map((node) => (node.id === id ? { ...node, data: { ...node.data, hasError: false } } : node)),
     )
-  }, [id, setNodes])
+    // Force iframe reload by temporarily changing the URL
+    const currentUrl = data.url
+    setNodes((nodes) =>
+      nodes.map((node) =>
+        node.id === id
+          ? { ...node, data: { ...node.data, url: '' } }
+          : node
+      )
+    )
+    setTimeout(() => {
+      setNodes((nodes) =>
+        nodes.map((node) =>
+          node.id === id
+            ? { ...node, data: { ...node.data, url: currentUrl } }
+            : node
+        )
+      )
+    }, 500)
+  }, [id, setNodes, data.url])
 
   const handleSelectModeToggle = useCallback(() => {
     setIsSelectModeActive(prev => !prev)
@@ -106,6 +124,7 @@ export default function WebserverNode({ id, data, selected }) {
         hasError={hasError || data.hasError}
         isSelectModeActive={isSelectModeActive}
         onSelectModeToggle={handleSelectModeToggle}
+        onRefresh={handleRetry}
       />
 
       <WebserverPreview

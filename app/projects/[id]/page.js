@@ -38,7 +38,7 @@ export default function ProductPage({ params }) {
   const { resetTimeout, clearTimeout } = useSandboxTimeout(id, sandboxStatus);
 
   // WebSocket status update handler
-  const handleSandboxStatusUpdate = useCallback((update) => {
+  const handleSandboxStatusUpdate = useCallback(async (update) => {
     console.log('📡 Received sandbox status update:', update);
     setSandboxStatus(update.status);
     if (update.previewUrl) {
@@ -47,7 +47,19 @@ export default function ProductPage({ params }) {
     if (update.error) {
       setError(update.error);
     }
-  }, []);
+    
+    // Trigger route discovery when sandbox becomes ready via WebSocket
+    if (update.status === 'started' && id) {
+      try {
+        await fetch(`/api/projects/${id}/scan-routes`, {
+          method: 'POST',
+          credentials: 'include'
+        });
+      } catch (error) {
+        console.error('Failed to trigger route discovery via WebSocket update:', error);
+      }
+    }
+  }, [id]);
 
   // Set up WebSocket connection for real-time sandbox status updates
   useSandboxWebSocket(id, handleSandboxStatusUpdate);
@@ -99,6 +111,16 @@ export default function ProductPage({ params }) {
       setPreviewUrl(data.previewUrl);
       setError(null);
       
+      // Trigger route discovery when sandbox starts successfully
+      try {
+        await fetch(`/api/projects/${id}/scan-routes`, {
+          method: 'POST',
+          credentials: 'include'
+        });
+      } catch (error) {
+        console.error('Failed to trigger route discovery after sandbox start:', error);
+      }
+      
       setTimeout(() => {
         setStartupProgress(null);
       }, 1000);
@@ -144,6 +166,18 @@ export default function ProductPage({ params }) {
             // Auto-start sandbox if it's not running and not still being created
             if (statusData.status !== 'starting' && statusData.status !== 'creating') {
               await startSandbox();
+            }
+            
+            // Trigger route discovery if sandbox is ready
+            if (statusData.status === 'started') {
+              try {
+                await fetch(`/api/projects/${id}/scan-routes`, {
+                  method: 'POST',
+                  credentials: 'include'
+                });
+              } catch (error) {
+                console.error('Failed to trigger route discovery:', error);
+              }
             }
           } else {
             setSandboxStatus('error');

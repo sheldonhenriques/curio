@@ -341,6 +341,32 @@ export function useProjectNodes(projectId, userId) {
     return createNode(defaultNode);
   }, [createNode]);
 
+  // Ensure AI chat node exists with deduplication
+  const ensureAIChatNodeRef = useRef(false);
+  const ensureAIChatNode = useCallback(async (projectData) => {
+    // Prevent multiple simultaneous calls
+    if (ensureAIChatNodeRef.current) {
+      return null;
+    }
+    
+    const hasAIChatNode = nodes.some(node => node.type === 'aichatNode');
+    
+    if (!hasAIChatNode) {
+      ensureAIChatNodeRef.current = true;
+      try {
+        const result = await createDefaultAIChatNode(projectData);
+        return result;
+      } finally {
+        // Reset flag after 2 seconds to allow retry if needed
+        setTimeout(() => {
+          ensureAIChatNodeRef.current = false;
+        }, 2000);
+      }
+    }
+    
+    return null;
+  }, [nodes, createDefaultAIChatNode]);
+
   // Function to flush all pending updates immediately
   const flushPendingUpdates = useCallback(async () => {
     const pendingUpdates = Array.from(pendingUpdatesRef.current.entries());
@@ -412,6 +438,7 @@ export function useProjectNodes(projectId, userId) {
     updateNode,
     deleteNode,
     batchUpdateNodes,
-    createDefaultAIChatNode
+    createDefaultAIChatNode,
+    ensureAIChatNode
   };
 }

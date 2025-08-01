@@ -1,4 +1,4 @@
-import { createSandboxWithId } from './sandboxService.js';
+import { createSandboxWithId, startFileWatcher } from './sandboxService.js';
 import { createClient } from '@supabase/supabase-js';
 
 // Unified function to broadcast to both WebSocket systems
@@ -31,6 +31,44 @@ function broadcastToAllSystems(projectId, status, userId, previewUrl = null, err
   } catch (error) {
     console.error('❌ Error broadcasting to WebSocket systems:', error);
     // Don't throw - broadcast failure shouldn't break sandbox creation
+  }
+}
+
+// Function to broadcast node creation events
+export function broadcastNodeCreated(projectId, userId, nodeData) {
+  try {
+    // 1. Broadcast to project rooms (for project pages)
+    if (global.socketIO) {
+      const projectRoom = `project-${projectId}`;
+      global.socketIO.to(projectRoom).emit('node_created', {
+        type: 'node_created',
+        projectId: parseInt(projectId),
+        node: nodeData,
+        timestamp: Date.now()
+      });
+      
+      const projectClientsInRoom = global.socketIO.sockets.adapter.rooms.get(projectRoom);
+      const projectBroadcastCount = projectClientsInRoom ? projectClientsInRoom.size : 0;
+      console.log(`📡 Node created broadcast sent to ${projectBroadcastCount} project clients for project ${projectId}`);
+    }
+
+    // 2. Broadcast to user rooms (for dashboard)
+    if (global.socketIO && userId) {
+      const userRoom = `user-${userId}`;
+      global.socketIO.to(userRoom).emit('node_created', {
+        type: 'node_created',
+        projectId: parseInt(projectId),
+        node: nodeData,
+        timestamp: Date.now()
+      });
+      
+      const userClientsInRoom = global.socketIO.sockets.adapter.rooms.get(userRoom);
+      const userBroadcastCount = userClientsInRoom ? userClientsInRoom.size : 0;
+      console.log(`📡 Node created broadcast sent to ${userBroadcastCount} user clients for project ${projectId}`);
+    }
+  } catch (error) {
+    console.error('❌ Error broadcasting node creation:', error);
+    // Don't throw - broadcast failure shouldn't break node creation
   }
 }
 
@@ -153,6 +191,7 @@ export const createSandboxJob = async (projectId, projectTitle, userId) => {
       throw updateError2;
     }
     
+    // Note: File watcher will be updated with project ID after setup completes
     
     // Continue setup in background without blocking
     setupPromise
@@ -166,6 +205,13 @@ export const createSandboxJob = async (projectId, projectTitle, userId) => {
           })
           .eq('id', projectId);
           
+        // Update file watcher with project ID now that setup is complete
+        try {
+          await startFileWatcher(sandboxId, projectId);
+        } catch (watcherError) {
+          console.warn('⚠️ Failed to update file watcher with project ID:', watcherError);
+        }
+        
         // Broadcast to both WebSocket systems
         broadcastToAllSystems(projectId, 'started', userId, setupResult.previewUrl);
       })

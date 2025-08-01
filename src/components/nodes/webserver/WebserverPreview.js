@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { AlertCircle, RefreshCw, Loader2 } from "lucide-react"
 
 const ErrorState = ({ onRetry }) => (
@@ -39,13 +39,48 @@ const StoppedState = () => (
 
 const WebserverPreview = ({ url, hasError, onLoadError, onLoadSuccess, onRetry, sandboxStatus, isSelectModeActive, onElementSelected, onUpdateElement }) => {
   const iframeRef = useRef(null)
+  const retryCountRef = useRef(0)
+  const retryTimeoutRef = useRef(null)
+  const [isRetrying, setIsRetrying] = useState(false)
+  
   const handleLoad = useCallback(() => {
+    retryCountRef.current = 0
+    setIsRetrying(false)
     onLoadSuccess?.()
   }, [onLoadSuccess])
 
   const handleError = useCallback(() => {
-    onLoadError?.()
-  }, [onLoadError])
+    if (sandboxStatus === 'started' || sandboxStatus === 'starting') {
+      // Server might still be starting up, implement retry with exponential backoff
+      const maxRetries = 5
+      const baseDelay = 2000 // 2 seconds
+      
+      if (retryCountRef.current < maxRetries) {
+        retryCountRef.current += 1
+        setIsRetrying(true)
+        
+        const delay = Math.min(baseDelay * Math.pow(2, retryCountRef.current - 1), 30000) // Max 30 seconds
+        
+        retryTimeoutRef.current = setTimeout(() => {
+          if (iframeRef.current) {
+            // Force iframe reload by changing src
+            const currentUrl = iframeRef.current.src
+            iframeRef.current.src = ''
+            setTimeout(() => {
+              if (iframeRef.current) {
+                iframeRef.current.src = currentUrl
+              }
+            }, 500)
+          }
+        }, delay)
+      } else {
+        setIsRetrying(false)
+        onLoadError?.()
+      }
+    } else {
+      onLoadError?.()
+    }
+  }, [onLoadError, sandboxStatus])
 
   // Handle messages from iframe
   const handleMessage = useCallback((event) => {
@@ -144,6 +179,28 @@ const WebserverPreview = ({ url, hasError, onLoadError, onLoadSuccess, onRetry, 
     }
   }, [onUpdateElement, sendPropertyUpdate])
 
+  // Clean up retry timeout on unmount or URL change
+  useEffect(() => {
+    return () => {
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current)
+        retryTimeoutRef.current = null
+      }
+    }
+  }, [url])
+
+  // Reset retry state when sandbox status changes to started
+  useEffect(() => {
+    if (sandboxStatus === 'started' && retryCountRef.current > 0) {
+      retryCountRef.current = 0
+      setIsRetrying(false)
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current)
+        retryTimeoutRef.current = null
+      }
+    }
+  }, [sandboxStatus])
+
   // Show different states based on sandbox status
   if (sandboxStatus === 'creating') {
     return <LoadingState message="Setting up sandbox..." />
@@ -159,6 +216,11 @@ const WebserverPreview = ({ url, hasError, onLoadError, onLoadSuccess, onRetry, 
 
   if (sandboxStatus === 'failed' || sandboxStatus === 'error') {
     return <ErrorState onRetry={onRetry} />
+  }
+
+  // Show retry state if actively retrying
+  if (isRetrying) {
+    return <LoadingState message={`Retrying connection (attempt ${retryCountRef.current}/5)...`} />
   }
 
   if (hasError) {
