@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 
-// GET /api/projects/[id]/nodes - Fetch all nodes for a project
+// GET /api/project/[id]/nodes - Fetch all nodes for a project
 export async function GET(request, { params }) {
   try {
     const supabase = await createClient();
@@ -62,7 +62,7 @@ export async function GET(request, { params }) {
 
     return NextResponse.json(transformedNodes);
   } catch (error) {
-    console.error('Error in GET /api/projects/[id]/nodes:', error);
+    console.error('Error in GET /api/project/[id]/nodes:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -70,7 +70,7 @@ export async function GET(request, { params }) {
   }
 }
 
-// POST /api/projects/[id]/nodes - Create a new node
+// POST /api/project/[id]/nodes - Create a new node
 export async function POST(request, { params }) {
   try {
     const supabase = await createClient();
@@ -153,7 +153,7 @@ export async function POST(request, { params }) {
 
     return NextResponse.json(transformedNode, { status: 201 });
   } catch (error) {
-    console.error('Error in POST /api/projects/[id]/nodes:', error);
+    console.error('Error in POST /api/project/[id]/nodes:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

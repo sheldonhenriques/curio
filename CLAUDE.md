@@ -70,7 +70,7 @@ This is a Next.js 15 application built with React 19 that implements a node-base
 - `src/services/sandboxService.js` - Core Daytona SDK integration
 - `src/services/backgroundJobs.js` - Async job queue and WebSocket broadcasting
 - `src/services/astIdInjector.js` - AST-based ID injection for visual editor
-- `app/api/projects/[id]/sandbox/` - Sandbox management API endpoints
+- `app/api/project/[id]/sandbox/` - Sandbox management API endpoints
 
 ## Visual Website Editor System
 
@@ -87,7 +87,7 @@ This is a Next.js 15 application built with React 19 that implements a node-base
 - **Visual Editor SDK** (`src/services/visual-editor-sdk.js`): Client-side script for element selection
 - **Property Panel** (`src/components/nodes/webserver/PropertyPanel.js`): Tailwind property controls
 - **AST ID Injection** (`src/services/astIdInjector.js`): Automatic ID generation using Babel AST
-- **File Modification API** (`app/api/projects/[id]/sandbox/files/modify/route.js`): Updates JSX/TSX files
+- **File Modification API** (`app/api/project/[id]/sandbox/files/modify/route.js`): Updates JSX/TSX files
 
 **ID Generation Pattern**: `ComponentName_ElementType_Index` (e.g., `UserProfile_div_0`, `Header_button_1`)
 

@@ -51,7 +51,7 @@ export default function ProductPage({ params }) {
     // Trigger route discovery when sandbox becomes ready via WebSocket
     if (update.status === 'started' && id) {
       try {
-        await fetch(`/api/projects/${id}/scan-routes`, {
+        await fetch(`/api/project/${id}/scan-routes`, {
           method: 'POST',
           credentials: 'include'
         });
@@ -95,7 +95,7 @@ export default function ProductPage({ params }) {
         });
       }, 2000);
 
-      const response = await fetch(`/api/projects/${id}/sandbox/start`, {
+      const response = await fetch(`/api/project/${id}/sandbox/start`, {
         method: 'POST',
         credentials: 'include'
       });
@@ -113,7 +113,7 @@ export default function ProductPage({ params }) {
       
       // Trigger route discovery when sandbox starts successfully
       try {
-        await fetch(`/api/projects/${id}/scan-routes`, {
+        await fetch(`/api/project/${id}/scan-routes`, {
           method: 'POST',
           credentials: 'include'
         });
@@ -142,7 +142,7 @@ export default function ProductPage({ params }) {
         setIsLoading(true);
         
         // Load project data
-        const projectResponse = await fetch(`/api/projects/${id}`, {
+        const projectResponse = await fetch(`/api/project/${id}`, {
           credentials: 'include'
         });
         if (!projectResponse.ok) {
@@ -153,7 +153,7 @@ export default function ProductPage({ params }) {
 
         // Check sandbox status
         if (projectData.sandboxId) {
-          const statusResponse = await fetch(`/api/projects/${id}/sandbox/status`, {
+          const statusResponse = await fetch(`/api/project/${id}/sandbox/status`, {
             credentials: 'include'
           });
           if (statusResponse.ok) {
@@ -171,7 +171,7 @@ export default function ProductPage({ params }) {
             // Trigger route discovery if sandbox is ready
             if (statusData.status === 'started') {
               try {
-                await fetch(`/api/projects/${id}/scan-routes`, {
+                await fetch(`/api/project/${id}/scan-routes`, {
                   method: 'POST',
                   credentials: 'include'
                 });
@@ -208,7 +208,7 @@ export default function ProductPage({ params }) {
         statusPollingIntervalRef.current = setInterval(async () => {
           try {
             // Light polling as fallback - only check project data
-            const projectResponse = await fetch(`/api/projects/${id}`, {
+            const projectResponse = await fetch(`/api/project/${id}`, {
               credentials: 'include'
             });
             

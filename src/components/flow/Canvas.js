@@ -293,7 +293,7 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
       if (proj?.sandboxId) {
         
         try {
-          const response = await fetch(`/api/projects/${proj.id}/sandbox/files/modify`, {
+          const response = await fetch(`/api/project/${proj.id}/sandbox/files/modify`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -382,7 +382,7 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
     if (proj?.sandboxId) {
       
       try {
-        const response = await fetch(`/api/projects/${proj.id}/sandbox/files/modify`, {
+        const response = await fetch(`/api/project/${proj.id}/sandbox/files/modify`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

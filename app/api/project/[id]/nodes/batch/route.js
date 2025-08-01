@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 
-// PUT /api/projects/[id]/nodes/batch - Batch update multiple nodes
+// PUT /api/project/[id]/nodes/batch - Batch update multiple nodes
 export async function PUT(request, { params }) {
   try {
     const supabase = await createClient();
@@ -132,7 +132,7 @@ export async function PUT(request, { params }) {
     return NextResponse.json(response, { status: statusCode });
 
   } catch (error) {
-    console.error('Error in PUT /api/projects/[id]/nodes/batch:', error);
+    console.error('Error in PUT /api/project/[id]/nodes/batch:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -140,7 +140,7 @@ export async function PUT(request, { params }) {
   }
 }
 
-// POST /api/projects/[id]/nodes/batch - Batch create multiple nodes
+// POST /api/project/[id]/nodes/batch - Batch create multiple nodes
 export async function POST(request, { params }) {
   try {
     const supabase = await createClient();
@@ -229,7 +229,7 @@ export async function POST(request, { params }) {
     }, { status: 201 });
 
   } catch (error) {
-    console.error('Error in POST /api/projects/[id]/nodes/batch:', error);
+    console.error('Error in POST /api/project/[id]/nodes/batch:', error);
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

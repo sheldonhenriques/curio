@@ -173,7 +173,7 @@ export const useProjects = () => {
 
       const updatedProject = { ...project, starred: !project.starred };
       
-      const response = await fetch(`/api/projects/${projectId}`, {
+      const response = await fetch(`/api/project/${projectId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -232,7 +232,7 @@ export const useProjects = () => {
         prevProjects.filter(p => p.id !== projectId)
       );
 
-      const response = await fetch(`/api/projects/${projectId}`, {
+      const response = await fetch(`/api/project/${projectId}`, {
         method: 'DELETE',
         credentials: 'include'
       });

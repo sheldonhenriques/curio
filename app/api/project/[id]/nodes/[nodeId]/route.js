@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 
-// GET /api/projects/[id]/nodes/[nodeId] - Get specific node
+// GET /api/project/[id]/nodes/[nodeId] - Get specific node
 export async function GET(request, { params }) {
   try {
     const supabase = await createClient();
@@ -47,7 +47,7 @@ export async function GET(request, { params }) {
 
     return NextResponse.json(transformedNode);
   } catch (error) {
-    console.error('Error in GET /api/projects/[id]/nodes/[nodeId]:', error);
+    console.error('Error in GET /api/project/[id]/nodes/[nodeId]:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -55,7 +55,7 @@ export async function GET(request, { params }) {
   }
 }
 
-// PUT /api/projects/[id]/nodes/[nodeId] - Update specific node
+// PUT /api/project/[id]/nodes/[nodeId] - Update specific node
 export async function PUT(request, { params }) {
   try {
     const supabase = await createClient();
@@ -138,7 +138,7 @@ export async function PUT(request, { params }) {
 
     return NextResponse.json(transformedNode);
   } catch (error) {
-    console.error('Error in PUT /api/projects/[id]/nodes/[nodeId]:', error);
+    console.error('Error in PUT /api/project/[id]/nodes/[nodeId]:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -146,7 +146,7 @@ export async function PUT(request, { params }) {
   }
 }
 
-// DELETE /api/projects/[id]/nodes/[nodeId] - Delete specific node
+// DELETE /api/project/[id]/nodes/[nodeId] - Delete specific node
 export async function DELETE(request, { params }) {
   try {
     const supabase = await createClient();
@@ -199,7 +199,7 @@ export async function DELETE(request, { params }) {
       { status: 200 }
     );
   } catch (error) {
-    console.error('Error in DELETE /api/projects/[id]/nodes/[nodeId]:', error);
+    console.error('Error in DELETE /api/project/[id]/nodes/[nodeId]:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
