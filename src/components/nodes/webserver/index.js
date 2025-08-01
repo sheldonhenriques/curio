@@ -76,25 +76,9 @@ export default function WebserverNode({ id, data, selected }) {
     setNodes((nodes) =>
       nodes.map((node) => (node.id === id ? { ...node, data: { ...node.data, hasError: false } } : node)),
     )
-    // Force iframe reload by temporarily changing the URL
-    const currentUrl = data.url
-    setNodes((nodes) =>
-      nodes.map((node) =>
-        node.id === id
-          ? { ...node, data: { ...node.data, url: '' } }
-          : node
-      )
-    )
-    setTimeout(() => {
-      setNodes((nodes) =>
-        nodes.map((node) =>
-          node.id === id
-            ? { ...node, data: { ...node.data, url: currentUrl } }
-            : node
-        )
-      )
-    }, 500)
-  }, [id, setNodes, data.url])
+    // The WebserverPreview component will handle cache-busting internally
+    // No need to modify the node's URL permanently
+  }, [id, setNodes])
 
   const handleSelectModeToggle = useCallback(() => {
     setIsSelectModeActive(prev => !prev)

@@ -157,7 +157,7 @@ async function handleNewPageComponent(supabase, project, routeInfo, filePath, is
   let previewUrl = '';
   try {
     // Construct preview URL (this would need to be adapted based on your sandbox service)
-    const baseUrl = `https://${project.sandbox_id}.preview.daytona.app`;
+    const baseUrl = `https://3000-${project.sandbox_id}.proxy.daytona.work`;
     previewUrl = baseUrl + route;
   } catch (error) {
     console.warn('Could not construct preview URL:', error);

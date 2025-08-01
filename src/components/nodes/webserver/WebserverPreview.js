@@ -63,14 +63,8 @@ const WebserverPreview = ({ url, hasError, onLoadError, onLoadSuccess, onRetry, 
         
         retryTimeoutRef.current = setTimeout(() => {
           if (iframeRef.current) {
-            // Force iframe reload by changing src
-            const currentUrl = iframeRef.current.src
-            iframeRef.current.src = ''
-            setTimeout(() => {
-              if (iframeRef.current) {
-                iframeRef.current.src = currentUrl
-              }
-            }, 500)
+            // Force iframe reload
+            iframeRef.current.src = url
           }
         }, delay)
       } else {
