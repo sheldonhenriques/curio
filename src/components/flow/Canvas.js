@@ -128,23 +128,11 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
   const [nodes, setNodes, defaultOnNodesChange] = useNodesState(projectNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
-  // Custom onNodesChange handler with local storage
+  // Custom onNodesChange handler (no webhook calls here)
   const onNodesChange = useCallback((changes) => {
     // Apply changes immediately for UI responsiveness
     defaultOnNodesChange(changes);
-
-    // Handle local storage for relevant changes
-    if (project?.id) {
-      changes.forEach(change => {
-        if (change.type === 'position' && change.position) {
-          // Position changes are now handled by database
-        } else if (change.type === 'dimensions' && change.dimensions) {
-          // Dimension changes are now handled by database
-        }
-        // Add more change types as needed (select, remove, etc.)
-      });
-    }
-  }, [defaultOnNodesChange, project?.id]);
+  }, [defaultOnNodesChange]);
 
   // Update nodes when project data changes (but preserve local positions)
   useEffect(() => {
@@ -244,6 +232,28 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
     (params) => setEdges((eds) => addEdge(params, eds)),
     [setEdges]
   );
+
+  // Handle node drag stop - send webhook for position updates only when dragging ends
+  const onNodeDragStop = useCallback((event, node) => {
+    if (project?.id && user?.id && node?.id && node?.position) {
+      // Send webhook for position updates only on drag end
+      fetch('/api/webhook/node-position-update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          nodeId: node.id,
+          projectId: project.id,
+          position: node.position,
+          userId: user.id
+        }),
+        credentials: 'include'
+      }).catch(error => {
+        console.error('Error sending position update webhook:', error);
+      });
+    }
+  }, [project?.id, user?.id]);
 
   // Debounce timeout ref for text content updates
   const textContentTimeoutRef = useRef(null)
@@ -450,6 +460,7 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onNodeDragStop={onNodeDragStop}
           fitView
           nodeTypes={nodeTypes}
           attributionPosition="bottom-left"
