@@ -15,7 +15,7 @@ export const ProjectCard = ({ project, onToggleStar, onDelete }) => {
       return;
     }
     
-    router.push(`/projects/${project.id}`);
+    router.push(`/project/${project.id}`);
   };
 
   const handleStarClick = (e) => {

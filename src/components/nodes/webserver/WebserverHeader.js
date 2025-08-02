@@ -1,9 +1,9 @@
 "use client"
 
 import { useState } from "react"
-import { Server, AlertCircle, MousePointer2 } from "lucide-react"
+import { Server, AlertCircle, MousePointer2, RefreshCw } from "lucide-react"
 
-const WebserverHeader = ({ url, path, onPathChange, hasError, isSelectModeActive, onSelectModeToggle }) => {
+const WebserverHeader = ({ url, path, onPathChange, hasError, isSelectModeActive, onSelectModeToggle, onRefresh }) => {
   const [isEditing, setIsEditing] = useState(false)
   const [editablePath, setEditablePath] = useState(path)
 
@@ -48,6 +48,15 @@ const WebserverHeader = ({ url, path, onPathChange, hasError, isSelectModeActive
           {path}
         </span>
       )}
+
+      {/* Refresh Button */}
+      <button
+        onClick={onRefresh}
+        className="p-1 rounded transition-colors flex-shrink-0 bg-gray-200 text-gray-600 hover:bg-gray-300"
+        title="Refresh Preview"
+      >
+        <RefreshCw className="w-4 h-4" />
+      </button>
 
       {/* Select Mode Toggle Button */}
       <button

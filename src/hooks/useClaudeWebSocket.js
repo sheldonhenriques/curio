@@ -1,20 +1,24 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { io } from 'socket.io-client';
 
 export function useClaudeWebSocket() {
   const [isConnected, setIsConnected] = useState(false);
   const [connectionError, setConnectionError] = useState(null);
-  const wsRef = useRef(null);
+  const socketRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
   const messageCallbacksRef = useRef(new Map());
 
   const connect = useCallback(() => {
     try {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/api/claude-ws`;
-      
-      wsRef.current = new WebSocket(wsUrl);
+      // Create Socket.IO connection
+      socketRef.current = io({
+        autoConnect: true,
+        reconnection: true,
+        reconnectionDelay: 3000,
+        reconnectionAttempts: 5
+      });
 
-      wsRef.current.onopen = () => {
+      socketRef.current.on('connect', () => {
         setIsConnected(true);
         setConnectionError(null);
         
@@ -23,44 +27,38 @@ export function useClaudeWebSocket() {
           clearTimeout(reconnectTimeoutRef.current);
           reconnectTimeoutRef.current = null;
         }
-      };
+      });
 
-      wsRef.current.onmessage = (event) => {
+      socketRef.current.on('claude-message', (message) => {
         try {
-          const message = JSON.parse(event.data);
-          
           // Call all registered message callbacks
           messageCallbacksRef.current.forEach((callback) => {
             try {
               callback(message);
             } catch (callbackError) {
-              console.error('[WS] Error in message callback:', callbackError);
+              console.error('[Socket.IO] Error in message callback:', callbackError);
             }
           });
         } catch (error) {
-          console.error('[WS] Error parsing message:', error, event.data);
+          console.error('[Socket.IO] Error processing message:', error, message);
         }
-      };
+      });
 
-      wsRef.current.onclose = (event) => {
+      socketRef.current.on('disconnect', (reason) => {
         setIsConnected(false);
         
-        // Only attempt to reconnect if it wasn't a manual disconnect
-        if (event.code !== 1000 && !reconnectTimeoutRef.current) {
-          reconnectTimeoutRef.current = setTimeout(() => {
-            connect();
-          }, 3000);
-        }
-      };
+        // Socket.IO handles reconnection automatically, but we can add custom logic here if needed
+        console.log('[Socket.IO] Disconnected:', reason);
+      });
 
-      wsRef.current.onerror = (error) => {
-        console.error('[WS] WebSocket error:', error);
-        setConnectionError('WebSocket connection failed');
-      };
+      socketRef.current.on('connect_error', (error) => {
+        console.error('[Socket.IO] Connection error:', error);
+        setConnectionError('Socket.IO connection failed');
+      });
 
     } catch (error) {
-      console.error('[WS] Error creating WebSocket:', error);
-      setConnectionError('Failed to create WebSocket connection');
+      console.error('[Socket.IO] Error creating connection:', error);
+      setConnectionError('Failed to create Socket.IO connection');
     }
   }, []);
 
@@ -70,28 +68,27 @@ export function useClaudeWebSocket() {
       reconnectTimeoutRef.current = null;
     }
     
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+      socketRef.current = null;
     }
     
     setIsConnected(false);
   };
 
   const sendMessage = (message) => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+    if (socketRef.current && socketRef.current.connected) {
       try {
-        const messageStr = JSON.stringify(message);
-        wsRef.current.send(messageStr);
+        socketRef.current.emit('claude-chat', message);
         return true;
       } catch (error) {
-        console.error('[WS] Error sending message:', error);
+        console.error('[Socket.IO] Error sending message:', error);
         setConnectionError('Failed to send message');
         return false;
       }
     } else {
-      console.error('[WS] WebSocket is not connected, state:', wsRef.current?.readyState);
-      setConnectionError('WebSocket is not connected');
+      console.error('[Socket.IO] Socket is not connected, state:', socketRef.current?.connected);
+      setConnectionError('Socket.IO is not connected');
       return false;
     }
   };

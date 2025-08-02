@@ -12,12 +12,14 @@ import ReactFlow, {
 } from 'reactflow';
 
 import 'reactflow/dist/style.css';
-import { initialNodes } from '@/data/nodes.js'
 import BaseNode from "@/components/nodes/basenode"
 import ChecklistNode from "@/components/nodes/checklist"
 import WebserverNode from "@/components/nodes/webserver"
 import AIChatNode from "@/components/nodes/aichat"
 import FloatingPropertyPanel from "@/components/flow/FloatingPropertyPanel"
+import { useProjectNodes } from '@/hooks/useProjectNodes'
+import { useAuth } from '@/hooks/useAuth'
+import { useNodeCreationSocket } from '@/hooks/useNodeCreationSocket'
 
 // Create context for property panel state
 const PropertyPanelContext = createContext()
@@ -42,19 +44,65 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
   // Property panel state
   const [selectedElement, setSelectedElement] = useState(null)
   const [updateElementFunction, setUpdateElementFunction] = useState(null)
+  const [activeNodeId, setActiveNodeId] = useState(null) // Track which webserver node is currently active
 
-  // Create project-specific nodes with sandbox integration
+  // Get current user for database operations
+  const { user } = useAuth();
+
+  // Use database-backed nodes with fallback to static nodes
+  const {
+    nodes: dbNodes,
+    loading: nodesLoading,
+    error: nodesError,
+    createNode,
+    updateNode,
+    deleteNode,
+    createDefaultAIChatNode,
+    ensureAIChatNode
+  } = useProjectNodes(project?.id, user?.id);
+
+
+  // Create project-specific nodes with sandbox integration and local storage positions
   const projectNodes = useMemo(() => {
-    if (!project) return initialNodes;
-    
-    return initialNodes.map(node => {
+    if (!project || nodesLoading) {
+      return [];
+    }
+
+    // If there's an error loading nodes, return empty array
+    if (nodesError) {
+      console.error('Error loading nodes:', nodesError);
+      return [];
+    }
+
+    // Use database nodes and update them with current project context
+    return dbNodes.map(node => {
+      // Removed local storage functionality - positions are now stored in database
+      
+      let updatedNode = { ...node };
+
       // Update webserver nodes with the sandbox preview URL and status
       if (node.type === 'webserverNode') {
+        // Construct the full URL by combining the base preview URL with the node's route
+        let fullUrl = updatedNode.data.url; // Keep existing URL as fallback
+        
+        if (previewUrl && updatedNode.data.route) {
+          try {
+            const baseUrl = new URL(previewUrl);
+            const route = updatedNode.data.route.startsWith('/') ? updatedNode.data.route : `/${updatedNode.data.route}`;
+            fullUrl = `${baseUrl.protocol}//${baseUrl.host}${route}`;
+          } catch {
+            // If URL construction fails, fall back to just the preview URL
+            fullUrl = previewUrl;
+          }
+        } else if (previewUrl) {
+          fullUrl = previewUrl;
+        }
+        
         return {
-          ...node,
+          ...updatedNode,
           data: {
-            ...node.data,
-            url: previewUrl || node.data.url,
+            ...updatedNode.data,
+            url: fullUrl,
             projectName: project.title,
             sandboxStatus: sandboxStatus,
             hasError: !previewUrl && (sandboxStatus === 'failed' || sandboxStatus === 'error')
@@ -64,9 +112,9 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
       // Update AI chat nodes with project context
       if (node.type === 'aichatNode') {
         return {
-          ...node,
+          ...updatedNode,
           data: {
-            ...node.data,
+            ...updatedNode.data,
             projectId: project.id,
             projectName: project.title,
             sandboxId: project.sandboxId,
@@ -74,22 +122,139 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
           }
         };
       }
-      return node;
+      return updatedNode;
     });
-  }, [project, previewUrl, sandboxStatus]);
+  }, [project, previewUrl, sandboxStatus, dbNodes, nodesLoading, nodesError]);
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(projectNodes);
+  const [nodes, setNodes, defaultOnNodesChange] = useNodesState(projectNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
-  // Update nodes when project or previewUrl changes
+  // Custom onNodesChange handler (no webhook calls here)
+  const onNodesChange = useCallback((changes) => {
+    // Apply changes immediately for UI responsiveness
+    defaultOnNodesChange(changes);
+  }, [defaultOnNodesChange]);
+
+  // Update nodes when project data changes (but preserve local positions)
   useEffect(() => {
-    setNodes(projectNodes);
+    setNodes(currentNodes => {
+      // Only update if the structure has actually changed
+      if (currentNodes.length !== projectNodes.length) {
+        return projectNodes;
+      }
+      
+      // Check if any node IDs or types have changed
+      const hasStructuralChanges = projectNodes.some((newNode, index) => {
+        const currentNode = currentNodes[index];
+        return !currentNode || currentNode.id !== newNode.id || currentNode.type !== newNode.type;
+      });
+      
+      if (hasStructuralChanges) {
+        return projectNodes;
+      }
+      
+      // Only update non-position/style data (like webserver URLs, AI chat project context)
+      return currentNodes.map(currentNode => {
+        const newNode = projectNodes.find(n => n.id === currentNode.id);
+        if (newNode) {
+          return {
+            ...currentNode,
+            data: newNode.data, // Update project context data
+            // Keep existing position and style from current state
+          };
+        }
+        return currentNode;
+      });
+    });
   }, [projectNodes, setNodes]);
+
+  // Ensure AI chat node always exists - use ref to prevent multiple calls
+  const hasCheckedAIChatRef = useRef(false);
+  useEffect(() => {
+    if (project && user && !nodesLoading && !nodesError && !hasCheckedAIChatRef.current) {
+      hasCheckedAIChatRef.current = true;
+      ensureAIChatNode(project);
+    }
+  }, [project, user, dbNodes, nodesLoading, nodesError, ensureAIChatNode]);
+
+  // Handle sandbox status changes - refresh webserver nodes when sandbox becomes ready
+  const previousSandboxStatusRef = useRef(sandboxStatus);
+  useEffect(() => {
+    const previousStatus = previousSandboxStatusRef.current;
+    previousSandboxStatusRef.current = sandboxStatus;
+    
+    // If sandbox just became ready, force refresh all webserver nodes
+    if (previousStatus !== 'started' && sandboxStatus === 'started' && previewUrl) {
+      setNodes(currentNodes => 
+        currentNodes.map(node => {
+          if (node.type === 'webserverNode') {
+            // Reset error states and force iframe refresh by updating URL timestamp
+            const currentUrl = node.data.url || previewUrl;
+            const hasTimestamp = currentUrl.includes('?t=') || currentUrl.includes('&t=');
+            const separator = currentUrl.includes('?') ? '&' : '?';
+            const refreshUrl = hasTimestamp 
+              ? currentUrl.replace(/[?&]t=\d+/, `${separator}t=${Date.now()}`)
+              : `${currentUrl}${separator}t=${Date.now()}`;
+            
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                url: refreshUrl,
+                sandboxStatus: sandboxStatus,
+                hasError: false
+              }
+            };
+          }
+          return node;
+        })
+      );
+    }
+  }, [sandboxStatus, previewUrl, setNodes]);
+
+  // Handle real-time node creation via WebSocket
+  const handleNodeCreated = useCallback((newNode) => {
+    console.log('📡 Adding new node from WebSocket:', newNode);
+    setNodes(prevNodes => {
+      // Check if node already exists to prevent duplicates
+      const exists = prevNodes.some(node => node.id === newNode.id);
+      if (exists) {
+        console.log('🔄 Node already exists, skipping:', newNode.id);
+        return prevNodes;
+      }
+      return [...prevNodes, newNode];
+    });
+  }, [setNodes]);
+
+  // Set up WebSocket listener for real-time node creation
+  useNodeCreationSocket(project?.id, handleNodeCreated);
 
   const onConnect = useCallback(
     (params) => setEdges((eds) => addEdge(params, eds)),
     [setEdges]
   );
+
+  // Handle node drag stop - send webhook for position updates only when dragging ends
+  const onNodeDragStop = useCallback((event, node) => {
+    if (project?.id && user?.id && node?.id && node?.position) {
+      // Send webhook for position updates only on drag end
+      fetch('/api/webhook/node-position-update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          nodeId: node.id,
+          projectId: project.id,
+          position: node.position,
+          userId: user.id
+        }),
+        credentials: 'include'
+      }).catch(error => {
+        console.error('Error sending position update webhook:', error);
+      });
+    }
+  }, [project?.id, user?.id]);
 
   // Debounce timeout ref for text content updates
   const textContentTimeoutRef = useRef(null)
@@ -98,13 +263,15 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
   const selectedElementRef = useRef(selectedElement)
   const projectRef = useRef(project) 
   const updateElementFunctionRef = useRef(updateElementFunction)
+  const activeNodeIdRef = useRef(activeNodeId)
   
   // Update refs when values change
   useEffect(() => {
     selectedElementRef.current = selectedElement
     projectRef.current = project
     updateElementFunctionRef.current = updateElementFunction
-  }, [selectedElement, project, updateElementFunction])
+    activeNodeIdRef.current = activeNodeId
+  }, [selectedElement, project, updateElementFunction, activeNodeId])
 
   // Debounced handler for text content updates
   const debouncedTextContentUpdate = useCallback(async (property, value) => {
@@ -127,27 +294,35 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
     // Debounce the file update (wait 800ms after user stops typing)
     textContentTimeoutRef.current = setTimeout(async () => {
       if (proj?.sandboxId) {
+        const requestBody = {
+          visualId: element.visualId,
+          elementSelector: element.elementPath,
+          xpath: element.xpath,
+          property,
+          value,
+          filePath: element.filePath, // Pass the specific file path from node data
+          currentRoute: element.currentRoute // Pass current route as backup
+        }
+        
+        console.log('Sending text content request:', requestBody)
         
         try {
-          const response = await fetch(`/api/projects/${proj.id}/sandbox/files/modify`, {
+          const response = await fetch(`/api/project/${proj.id}/sandbox/files/modify`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-              visualId: element.visualId,
-              elementSelector: element.elementPath,
-              xpath: element.xpath,
-              property,
-              value
-            }),
+            body: JSON.stringify(requestBody),
             credentials: 'include'
           })
           
           const result = await response.json()
+          console.log('Text content API response:', result)
           if (!result.success) {
             console.error('Failed to update text content:', result.error)
             // Don't show alert for debounced updates to avoid interrupting user
+          } else {
+            console.log('✅ Text content updated successfully:', result.filePath)
           }
         } catch (error) {
           console.error('Error updating text content (debounced):', error)
@@ -216,25 +391,31 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
     
     // Update files in sandbox
     if (proj?.sandboxId) {
+      const requestBody = {
+        visualId: element.visualId,
+        elementSelector: element.elementPath, // Keep as fallback
+        xpath: element.xpath, // Add XPath for precise targeting
+        newClassName: tailwindClass,
+        property,
+        value,
+        filePath: element.filePath, // Pass the specific file path from node data
+        currentRoute: element.currentRoute // Pass current route as backup
+      }
+      
+      console.log('Sending property change request:', requestBody)
       
       try {
-        const response = await fetch(`/api/projects/${proj.id}/sandbox/files/modify`, {
+        const response = await fetch(`/api/project/${proj.id}/sandbox/files/modify`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            visualId: element.visualId,
-            elementSelector: element.elementPath, // Keep as fallback
-            xpath: element.xpath, // Add XPath for precise targeting
-            newClassName: tailwindClass,
-            property,
-            value
-          }),
+          body: JSON.stringify(requestBody),
           credentials: 'include'
         })
 
         const result = await response.json()
+        console.log('Property change API response:', result)
         if (!result.success) {
           console.error('Failed to update file:', result.error)
           if (result.sandboxStatus && result.sandboxStatus !== 'started') {
@@ -242,6 +423,8 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
           } else {
             alert(`Failed to update file: ${result.error}`)
           }
+        } else {
+          console.log('✅ File updated successfully:', result.filePath)
         }
       } catch (error) {
         console.error('Error updating file:', error)
@@ -250,11 +433,34 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
     }
   }, [convertPropertyToTailwind, debouncedTextContentUpdate])
 
-  const handlePropertyPanelClose = useCallback(() => {
-    setSelectedElement(null)
+  // Enhanced setSelectedElement that tracks active node
+  const setSelectedElementWithNode = useCallback((element, nodeId) => {
+    // Handle different scenarios
+    if (!element && !nodeId) {
+      // Clearing both element and active node
+      setActiveNodeId(null)
+      setSelectedElement(null)
+    } else if (!element && nodeId) {
+      // Activating a node without selecting an element (select mode toggle)
+      setActiveNodeId(nodeId)
+      setSelectedElement(null)
+    } else if (element && nodeId) {
+      // Selecting an element - only allow if this is the active node
+      if (!activeNodeIdRef.current || activeNodeIdRef.current === nodeId) {
+        setActiveNodeId(nodeId)
+        setSelectedElement(element)
+      }
+      // Silently ignore element selections from non-active nodes
+    }
   }, [])
 
-  // Cleanup timeout on component unmount
+  const handlePropertyPanelClose = useCallback(() => {
+    setSelectedElement(null)
+    setActiveNodeId(null) // Clear active node when panel closes
+  }, [])
+
+
+  // Cleanup timeouts on component unmount
   useEffect(() => {
     return () => {
       if (textContentTimeoutRef.current) {
@@ -263,13 +469,28 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
     }
   }, [])
 
-  // Context value for property panel
+  // Function to handle node data updates (for checklist items, webserver URLs, etc.)
+  const handleNodeDataUpdate = useCallback((nodeId, newData, immediate = false) => {
+    if (!project || !user || !updateNode) return;
+
+    // Update local state immediately
+    setNodes(nodes => nodes.map(node => 
+      node.id === nodeId ? { ...node, data: { ...node.data, ...newData } } : node
+    ));
+
+    // Persist to database
+    updateNode(nodeId, { data: newData }, immediate);
+  }, [project, user, updateNode, setNodes]);
+
+  // Context value for property panel and node components
   const propertyPanelValue = {
     selectedElement,
-    setSelectedElement,
+    setSelectedElement: setSelectedElementWithNode, // Use the enhanced version
     updateElementFunction,
     setUpdateElementFunction,
-    handlePropertyChange
+    handlePropertyChange,
+    handleNodeDataUpdate, // Add this for node components to use
+    activeNodeId // Provide active node info
   }
 
   return (
@@ -281,6 +502,7 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onNodeDragStop={onNodeDragStop}
           fitView
           nodeTypes={nodeTypes}
           attributionPosition="bottom-left"

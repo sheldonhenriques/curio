@@ -30,7 +30,7 @@ export const createSandboxWithId = async (projectName, statusCallback) => {
     const sandboxId = sandbox.id;
 
     // Create a promise for the remaining setup work
-    const setupPromise = performSandboxSetup(sandbox, projectName, statusCallback);
+    const setupPromise = performSandboxSetup(sandbox, statusCallback);
 
     return {
       sandboxId,
@@ -43,7 +43,7 @@ export const createSandboxWithId = async (projectName, statusCallback) => {
 };
 
 // Separate function for the time-consuming setup work
-const performSandboxSetup = async (sandbox, projectName, statusCallback) => {
+const performSandboxSetup = async (sandbox, statusCallback) => {
   try {
     const rootDir = await sandbox.getUserRootDir();
     const projectDir = `${rootDir}/project`;
@@ -105,16 +105,16 @@ const continueSetup = async (sandbox, projectDir, statusCallback) => {
       await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
     }
     
-    // Install AST dependencies for ID injection
-    const installASTDeps = await sandbox.process.executeCommand(
-      `npm install @babel/parser @babel/traverse @babel/types @babel/generator`,
+    // Install AST dependencies for ID injection and chokidar for file watching
+    const installDeps = await sandbox.process.executeCommand(
+      `npm install @babel/parser @babel/traverse @babel/types @babel/generator chokidar`,
       projectDir,
       undefined,
       120
     );
 
-    if (installASTDeps.exitCode !== 0) {
-      console.warn(`⚠️  Failed to install AST dependencies for ${sandbox.id}: ${installASTDeps.result}`);
+    if (installDeps.exitCode !== 0) {
+      console.warn(`⚠️  Failed to install dependencies for ${sandbox.id}: ${installDeps.result}`);
     }
     
     if (statusCallback) {
@@ -124,6 +124,14 @@ const continueSetup = async (sandbox, projectDir, statusCallback) => {
     
     // Inject AST IDs into JSX/TSX files
     await injectASTIds(sandbox, projectDir);
+    
+    if (statusCallback) {
+      await statusCallback('configuring_editor');
+      await new Promise(resolve => setTimeout(resolve, 500)); // Shorter delay since we're reusing status
+    }
+    
+    // Set up file watcher files but don't start it yet - will be started after project creation
+    await setupFileWatcherFiles(sandbox, projectDir);
     
     if (statusCallback) {
       await statusCallback('starting_server');
@@ -160,88 +168,6 @@ const continueSetup = async (sandbox, projectDir, statusCallback) => {
   }
 };
 
-// Continue with the original createSandbox function for backward compatibility
-export const createSandbox = async (projectName) => {
-  const daytona = getDaytonaClient();
-  
-  try {
-    const sandbox = await daytona.create({
-      public: true,
-      image: "node:20",
-      name: `curio-${projectName.toLowerCase().replace(/\s+/g, '-')}`,
-      envVars: {
-        ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY
-      },
-    });
-
-    const rootDir = await sandbox.getUserRootDir();
-    const projectDir = `${rootDir}/project`;
-    
-    const createNextApp = await sandbox.process.executeCommand(
-      `npx create-next-app@latest project --typescript --tailwind --eslint --app --src-dir --import-alias "@/*" --yes`,
-      rootDir,
-      undefined,
-      1200
-    );
-
-    if (createNextApp.exitCode !== 0) {
-      throw new Error(`Failed to create Next.js app: ${createNextApp.result}`);
-    }
-
-    // Install Claude Code SDK for AI chat functionality
-    const installClaudeCode = await sandbox.process.executeCommand(
-      `npm install -g @anthropic-ai/claude-code@latest`,
-      projectDir,
-      undefined,
-      240
-    );
-
-    if (installClaudeCode.exitCode !== 0) {
-      console.warn(`Warning: Failed to install Claude Code SDK: ${installClaudeCode.result}`);
-      // Don't throw error - continue with sandbox creation even if Claude Code installation fails
-    }
-
-    // Add Visual Editor SDK to the Next.js project
-    await addVisualEditorSDK(sandbox, projectDir);
-    
-    // Install AST dependencies for ID injection
-    const installASTDeps = await sandbox.process.executeCommand(
-      `npm install @babel/parser @babel/traverse @babel/types @babel/generator`,
-      projectDir,
-      undefined,
-      120
-    );
-
-    if (installASTDeps.exitCode !== 0) {
-      console.warn(`Warning: Failed to install AST dependencies: ${installASTDeps.result}`);
-    }
-    
-    // Inject AST IDs into JSX/TSX files
-    await injectASTIds(sandbox, projectDir);
-    
-    await sandbox.process.executeCommand(
-      `nohup npm run dev > dev-server.log 2>&1 &`,
-      projectDir,
-      { PORT: "3000" },
-      60
-    );
-
-    await new Promise((resolve) => setTimeout(resolve, 10000));
-    
-    const preview = await sandbox.getPreviewLink(3000);
-
-    return {
-      sandboxId: sandbox.id,
-      previewUrl: preview.url,
-      projectDir: projectDir,
-      status: 'created'
-    };
-
-  } catch (error) {
-    console.error("Error creating sandbox:", error);
-    throw error;
-  }
-};
 
 export const startSandbox = async (sandboxId) => {
   const daytona = getDaytonaClient();
@@ -501,10 +427,10 @@ async function injectASTIds(sandbox, projectDir) {
   try {
     
     // Step 1: Read the AST injector script from our local file
-    const astInjectorPath = path.resolve(process.cwd(), 'src/services/ast-injector.js');
+    const astInjectorPath = path.resolve(process.cwd(), 'src/services/astIdInjector.js');
     const astInjectorContent = fs.readFileSync(astInjectorPath, 'utf8');
     
-    const sandboxScriptPath = `${projectDir}/ast-injector.js`;
+    const sandboxScriptPath = `${projectDir}/astIdInjector.js`;
     
     // Step 2: Write the script to the sandbox using heredoc (no escaping issues)
     const writeScriptCommand = `cat > "${sandboxScriptPath}" << 'CURIO_EOF'
@@ -520,7 +446,7 @@ CURIO_EOF`;
     
     // Step 3: Execute the script in the sandbox
     const executeResult = await sandbox.process.executeCommand(
-      `node ast-injector.js "${projectDir}"`,
+      `node astIdInjector.js "${projectDir}"`,
       projectDir,
       undefined,
       180
@@ -538,3 +464,221 @@ CURIO_EOF`;
     // Don't throw error - continue with sandbox creation even if AST injection fails
   }
 }
+
+/**
+ * Set up file watcher files in the sandbox (without starting the watcher)
+ */
+async function setupFileWatcherFiles(sandbox, projectDir) {
+  try {
+    const rootDir = await sandbox.getUserRootDir();
+    const curioDir = `${rootDir}/.curio`;
+    
+    // Step 1: Create .curio directory
+    const createDirResult = await sandbox.process.executeCommand(
+      `mkdir -p "${curioDir}"`,
+      rootDir
+    );
+    
+    if (createDirResult.exitCode !== 0) {
+      throw new Error(`Failed to create .curio directory: ${createDirResult.result}`);
+    }
+
+    // Step 2: Read the file watcher script from our local file
+    const fileWatcherPath = path.resolve(process.cwd(), 'src/services/fileWatcher.js');
+    const fileWatcherContent = fs.readFileSync(fileWatcherPath, 'utf8');
+    
+    const sandboxWatcherPath = `${curioDir}/fileWatcher.js`;
+    
+    // Step 3: Write the file watcher script to the .curio directory
+    const writeWatcherCommand = `cat > "${sandboxWatcherPath}" << 'CURIO_EOF'
+${fileWatcherContent}
+CURIO_EOF`;
+
+    const writeResult = await sandbox.process.executeCommand(writeWatcherCommand, rootDir);
+    
+    if (writeResult.exitCode !== 0) {
+      throw new Error(`Failed to write file watcher script: ${writeResult.result}`);
+    }
+
+    // Step 4: Create package.json and install chokidar in the .curio directory
+    const packageJsonContent = `{
+  "name": "curio-file-watcher",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Curio file watcher service",
+  "main": "fileWatcher.js",
+  "dependencies": {
+    "chokidar": "^3.5.3"
+  }
+}`;
+
+    const writePackageJsonCommand = `cat > "${curioDir}/package.json" << 'CURIO_EOF'
+${packageJsonContent}
+CURIO_EOF`;
+
+    const writePackageResult = await sandbox.process.executeCommand(writePackageJsonCommand, rootDir);
+    
+    if (writePackageResult.exitCode !== 0) {
+      throw new Error(`Failed to write package.json: ${writePackageResult.result}`);
+    }
+
+    // Install chokidar
+    const installChokidarResult = await sandbox.process.executeCommand(
+      `cd "${curioDir}" && npm install`,
+      rootDir,
+      undefined,
+      120
+    );
+
+    if (installChokidarResult.exitCode !== 0) {
+      console.warn('Warning: Failed to install chokidar in .curio directory:', installChokidarResult.result);
+      // Continue anyway - maybe it's already available globally or from project dependencies
+    }
+
+    console.log('✅ File watcher files prepared (will be started after project creation)');
+
+  } catch (error) {
+    console.warn('Warning: Failed to set up file watcher:', error.message);
+    // Don't throw error - continue with sandbox creation even if file watcher setup fails
+  }
+}
+
+/**
+ * Start file watcher with project ID after project creation
+ */
+export const startFileWatcher = async (sandboxId, projectId) => {
+  const daytona = getDaytonaClient();
+  
+  try {
+    const sandboxes = await daytona.list();
+    const sandbox = sandboxes.find(s => s.id === sandboxId);
+    
+    if (!sandbox) {
+      console.warn(`Sandbox ${sandboxId} not found for file watcher update`);
+      return;
+    }
+
+    const rootDir = await sandbox.getUserRootDir();
+    const projectDir = `${rootDir}/project`;
+    const curioDir = `${rootDir}/.curio`;
+
+    // Kill any existing file watcher processes (in case of restart)
+    const killResult = await sandbox.process.executeCommand(
+      `pkill -f "node fileWatcher.js" || true`,
+      rootDir
+    );
+    console.log('File watcher kill result:', killResult);
+
+    // Wait a moment for processes to clean up
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // Check if .curio directory exists
+    const checkDirResult = await sandbox.process.executeCommand(
+      `test -d "${curioDir}" && echo "exists" || echo "missing"`,
+      rootDir
+    );
+    
+    if (checkDirResult.result?.trim() === 'missing') {
+      console.log('⏳ .curio directory not ready yet, file watcher will be started by initial setup');
+      return;
+    }
+
+    console.log('✅ Curio directory exists, updating file watcher with project ID:', projectId);
+
+    // Verify file watcher script exists
+    const checkFileResult = await sandbox.process.executeCommand(
+      `test -f "${curioDir}/fileWatcher.js" && echo "exists" || echo "missing"`,
+      rootDir
+    );
+    
+    if (checkFileResult.result?.trim() === 'missing') {
+      console.warn('⚠️ File watcher script missing, skipping restart');
+      return;
+    }
+
+    console.log('File watcher file check: exists');
+
+    // Restart file watcher with correct project ID
+    const webhookUrl = process.env.NEXT_PUBLIC_APP_URL 
+      ? `${process.env.NEXT_PUBLIC_APP_URL}/api/webhook/file-changes`
+      : 'http://localhost:3000/api/webhook/file-changes';
+
+    const startWatcherCommand = `cd "${curioDir}" && nohup node fileWatcher.js > file-watcher.log 2>&1 &`;
+    
+    const startResult = await sandbox.process.executeCommand(
+      startWatcherCommand,
+      rootDir,
+      {
+        CURIO_WEBHOOK_URL: webhookUrl,
+        CURIO_PROJECT_ID: projectId.toString(),
+        CURIO_SANDBOX_ID: sandboxId,
+        CURIO_PROJECT_DIR: projectDir
+      },
+      60 // Increased timeout
+    );
+
+    console.log('File watcher start result:', startResult);
+
+    if (startResult.exitCode === 0) {
+      console.log(`✅ File watcher started with project ID: ${projectId}`);
+      
+      // Verify it's running after a short delay
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      const verifyResult = await sandbox.process.executeCommand(
+        `pgrep -f "node fileWatcher.js" || echo "not running"`,
+        rootDir
+      );
+      console.log('File watcher verification:', verifyResult);
+      
+      if (verifyResult.result?.trim() === 'not running') {
+        // Check the log file for more details
+        const logResult = await sandbox.process.executeCommand(
+          `tail -20 "${curioDir}/file-watcher.log" 2>/dev/null || echo "no log file"`,
+          rootDir
+        );
+        console.log('File watcher log:', logResult);
+      }
+    } else {
+      console.warn('❌ File watcher restart failed:', startResult.result);
+    }
+
+  } catch (error) {
+    console.warn('Warning: Failed to update file watcher:', error.message);
+  }
+};
+
+/**
+ * Trigger initial scan of existing routes in the file watcher
+ */
+export const triggerFileWatcherScan = async (sandboxId) => {
+  const daytona = getDaytonaClient();
+  
+  try {
+    const sandboxes = await daytona.list();
+    const sandbox = sandboxes.find(s => s.id === sandboxId);
+    
+    if (!sandbox) {
+      console.warn(`Sandbox ${sandboxId} not found for scan trigger`);
+      return;
+    }
+
+    const rootDir = await sandbox.getUserRootDir();
+    
+    // Send SIGUSR1 signal to the file watcher process to trigger scan
+    const triggerScanResult = await sandbox.process.executeCommand(
+      `pkill -SIGUSR1 -f "node fileWatcher.js" && echo "scan triggered" || echo "no process found"`,
+      rootDir
+    );
+    
+    console.log('File watcher scan trigger result:', triggerScanResult);
+    
+    if (triggerScanResult.result?.trim() === 'scan triggered') {
+      console.log('✅ File watcher scan triggered successfully');
+    } else {
+      console.warn('⚠️ File watcher process not found or scan trigger failed');
+    }
+    
+  } catch (error) {
+    console.error('❌ Error triggering file watcher scan:', error);
+  }
+};

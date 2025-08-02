@@ -100,9 +100,7 @@ export function useChatSession(nodeId, projectId) {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Failed to save message');
       }
-      
-      // Optionally reload session to update message count
-      // await loadSession();
+
       
     } catch (err) {
       console.error('Error saving message:', err);

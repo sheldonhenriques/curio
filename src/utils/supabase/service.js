@@ -39,6 +39,31 @@ export async function getProjectByIdInternal(projectId) {
   };
 }
 
+// Get all projects for a user using service role (for internal server operations)
+export async function getProjectsInternal(userId) {
+  const supabase = createServiceClient();
+  
+  const { data: projects, error } = await supabase
+    .from('projects')
+    .select('*')
+    .eq('user_id', userId)
+    .order('updated_at', { ascending: false });
+
+  if (error) {
+    throw new Error('Failed to fetch projects');
+  }
+
+  // Transform the data to match expected format
+  return projects.map(project => ({
+    ...project,
+    totalTasks: project.total_tasks || 0,
+    sandboxId: project.sandbox_id,
+    sandboxStatus: project.sandbox_status,
+    sandboxError: project.sandbox_error,
+    updated_at: project.updated_at
+  }));
+}
+
 // Get chat session by node ID using service role (for internal server operations)
 export async function getChatSessionByNodeIdInternal(nodeId, projectId = null) {
   const supabase = createServiceClient();
