@@ -44,6 +44,7 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
   // Property panel state
   const [selectedElement, setSelectedElement] = useState(null)
   const [updateElementFunction, setUpdateElementFunction] = useState(null)
+  const [activeNodeId, setActiveNodeId] = useState(null) // Track which webserver node is currently active
 
   // Get current user for database operations
   const { user } = useAuth();
@@ -262,13 +263,15 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
   const selectedElementRef = useRef(selectedElement)
   const projectRef = useRef(project) 
   const updateElementFunctionRef = useRef(updateElementFunction)
+  const activeNodeIdRef = useRef(activeNodeId)
   
   // Update refs when values change
   useEffect(() => {
     selectedElementRef.current = selectedElement
     projectRef.current = project
     updateElementFunctionRef.current = updateElementFunction
-  }, [selectedElement, project, updateElementFunction])
+    activeNodeIdRef.current = activeNodeId
+  }, [selectedElement, project, updateElementFunction, activeNodeId])
 
   // Debounced handler for text content updates
   const debouncedTextContentUpdate = useCallback(async (property, value) => {
@@ -291,6 +294,17 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
     // Debounce the file update (wait 800ms after user stops typing)
     textContentTimeoutRef.current = setTimeout(async () => {
       if (proj?.sandboxId) {
+        const requestBody = {
+          visualId: element.visualId,
+          elementSelector: element.elementPath,
+          xpath: element.xpath,
+          property,
+          value,
+          filePath: element.filePath, // Pass the specific file path from node data
+          currentRoute: element.currentRoute // Pass current route as backup
+        }
+        
+        console.log('Sending text content request:', requestBody)
         
         try {
           const response = await fetch(`/api/project/${proj.id}/sandbox/files/modify`, {
@@ -298,20 +312,17 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
             headers: {
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-              visualId: element.visualId,
-              elementSelector: element.elementPath,
-              xpath: element.xpath,
-              property,
-              value
-            }),
+            body: JSON.stringify(requestBody),
             credentials: 'include'
           })
           
           const result = await response.json()
+          console.log('Text content API response:', result)
           if (!result.success) {
             console.error('Failed to update text content:', result.error)
             // Don't show alert for debounced updates to avoid interrupting user
+          } else {
+            console.log('✅ Text content updated successfully:', result.filePath)
           }
         } catch (error) {
           console.error('Error updating text content (debounced):', error)
@@ -380,6 +391,18 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
     
     // Update files in sandbox
     if (proj?.sandboxId) {
+      const requestBody = {
+        visualId: element.visualId,
+        elementSelector: element.elementPath, // Keep as fallback
+        xpath: element.xpath, // Add XPath for precise targeting
+        newClassName: tailwindClass,
+        property,
+        value,
+        filePath: element.filePath, // Pass the specific file path from node data
+        currentRoute: element.currentRoute // Pass current route as backup
+      }
+      
+      console.log('Sending property change request:', requestBody)
       
       try {
         const response = await fetch(`/api/project/${proj.id}/sandbox/files/modify`, {
@@ -387,18 +410,12 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            visualId: element.visualId,
-            elementSelector: element.elementPath, // Keep as fallback
-            xpath: element.xpath, // Add XPath for precise targeting
-            newClassName: tailwindClass,
-            property,
-            value
-          }),
+          body: JSON.stringify(requestBody),
           credentials: 'include'
         })
 
         const result = await response.json()
+        console.log('Property change API response:', result)
         if (!result.success) {
           console.error('Failed to update file:', result.error)
           if (result.sandboxStatus && result.sandboxStatus !== 'started') {
@@ -406,6 +423,8 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
           } else {
             alert(`Failed to update file: ${result.error}`)
           }
+        } else {
+          console.log('✅ File updated successfully:', result.filePath)
         }
       } catch (error) {
         console.error('Error updating file:', error)
@@ -414,8 +433,30 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
     }
   }, [convertPropertyToTailwind, debouncedTextContentUpdate])
 
+  // Enhanced setSelectedElement that tracks active node
+  const setSelectedElementWithNode = useCallback((element, nodeId) => {
+    // Handle different scenarios
+    if (!element && !nodeId) {
+      // Clearing both element and active node
+      setActiveNodeId(null)
+      setSelectedElement(null)
+    } else if (!element && nodeId) {
+      // Activating a node without selecting an element (select mode toggle)
+      setActiveNodeId(nodeId)
+      setSelectedElement(null)
+    } else if (element && nodeId) {
+      // Selecting an element - only allow if this is the active node
+      if (!activeNodeIdRef.current || activeNodeIdRef.current === nodeId) {
+        setActiveNodeId(nodeId)
+        setSelectedElement(element)
+      }
+      // Silently ignore element selections from non-active nodes
+    }
+  }, [])
+
   const handlePropertyPanelClose = useCallback(() => {
     setSelectedElement(null)
+    setActiveNodeId(null) // Clear active node when panel closes
   }, [])
 
 
@@ -444,11 +485,12 @@ export default function Canvas({ project, previewUrl, sandboxStatus }) {
   // Context value for property panel and node components
   const propertyPanelValue = {
     selectedElement,
-    setSelectedElement,
+    setSelectedElement: setSelectedElementWithNode, // Use the enhanced version
     updateElementFunction,
     setUpdateElementFunction,
     handlePropertyChange,
-    handleNodeDataUpdate // Add this for node components to use
+    handleNodeDataUpdate, // Add this for node components to use
+    activeNodeId // Provide active node info
   }
 
   return (

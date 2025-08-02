@@ -143,13 +143,30 @@ export async function POST(request, { params }) {
     let fileContent = readResult.result
 
     // Use AST-injected visualId or fallback to selector-based approach
+    const hasVisualId = visualId ? fileContent.includes(`data-visual-id="${visualId}"`) : false
+    console.log('File modification attempt:', {
+      filePath: targetFilePath,
+      visualId,
+      property,
+      value,
+      fileContentLength: fileContent.length,
+      hasVisualId,
+      usingFallback: !hasVisualId && visualId ? 'tag-based' : 'none'
+    })
+    
     const updatedContent = updateClassNameInContent(fileContent, visualId, newClassName, property, value)
 
     if (updatedContent === fileContent) {
+      console.log('No changes made - element not found or content identical')
       return NextResponse.json({
         success: true,
         message: 'No changes needed',
-        filePath
+        filePath: targetFilePath,
+        debug: {
+          visualId,
+          hasVisualId: fileContent.includes(`data-visual-id="${visualId}"`),
+          fileLength: fileContent.length
+        }
       })
     }
 
@@ -205,21 +222,34 @@ function updateClassNameInContent(content, visualId, newClassName, property, val
 // Legacy functions removed - we now use AST-injected data-visual-id attributes
 
 function updateTextContentById(content, visualId, newText) {
-  if (!visualId) {
-    return updateTextContentFallback(content, newText)
-  }
-  
   // Sanitize the new text to prevent JSX syntax issues
   const sanitizedText = sanitizeTextForJSX(newText)
   
-  // Look for element with the specific data-visual-id attribute
-  const idPattern = new RegExp(`(data-visual-id="${visualId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}")`, 'g')
-  const match = content.match(idPattern)
-  
-  if (!match) {
-    return content
+  // Try visual ID first if available
+  if (visualId) {
+    const idPattern = new RegExp(`(data-visual-id="${visualId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}")`, 'g')
+    const match = content.match(idPattern)
+    
+    if (match) {
+      // Continue with existing visual ID logic
+      return updateTextContentWithVisualId(content, visualId, sanitizedText)
+    }
   }
   
+  // Fallback approach: try to extract tag name from visualId and update first matching element
+  if (visualId && visualId.includes('_')) {
+    const parts = visualId.split('_')
+    if (parts.length >= 2) {
+      const tagName = parts[1] // Extract tag name from visualId pattern like "Page_h1_0"
+      return updateTextContentByTagName(content, tagName, sanitizedText)
+    }
+  }
+  
+  // Final fallback
+  return updateTextContentFallback(content, sanitizedText)
+}
+
+function updateTextContentWithVisualId(content, visualId, sanitizedText) {
   // More precise pattern to find the element and its content
   // Handle both self-closing and container elements
   const elementPattern = new RegExp(`(<[^>]*data-visual-id="${visualId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"[^>]*>)([\\s\\S]*?)(<\/[^>]+>)`, 'g')
@@ -352,52 +382,189 @@ function updateTextContentById(content, visualId, newText) {
   return updatedContent
 }
 
-function updateClassNameById(content, visualId, newClassName) {
-  if (!visualId) {
-    return updateClassName(content, newClassName)
-  }
+function updateTextContentByTagName(content, tagName, sanitizedText) {
+  console.log(`🔄 Using tag-based fallback for ${tagName}`)
   
-  if (!newClassName) {
-    return content
-  }
-  
-  // Look for element with the specific data-visual-id attribute
-  const elementPattern = new RegExp(`(<[^>]*)(data-visual-id="${visualId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}")([^>]*>)`, 'g')
+  // Try the specific tag first
+  let tagPattern = new RegExp(`(<${tagName}[^>]*>)([\\s\\S]*?)(<\/${tagName}>)`, 'i')
   
   let updatedContent = content
   let wasUpdated = false
   
-  updatedContent = updatedContent.replace(elementPattern, (match, _beforeId, _visualIdAttr, afterId) => {
+  updatedContent = updatedContent.replace(tagPattern, (match, openTag, innerContent, closeTag) => {
     if (wasUpdated) return match
     
-    // Check if className already exists in the element
-    const classNamePattern = /className=["']([^"']*)["']/
-    const classNameMatch = match.match(classNamePattern)
-    
-    let updatedElement
-    if (classNameMatch) {
-      // Update existing className
-      const existingClasses = classNameMatch[1].split(' ').filter(cls => cls.trim())
-      const newClasses = newClassName.split(' ').filter(cls => cls.trim())
-      
-      // Remove conflicting classes and add new ones
-      const cleanedClasses = removeConflictingTailwindClasses(existingClasses, newClasses)
-      const mergedClasses = [...new Set([...cleanedClasses, ...newClasses])]
-      
-      updatedElement = match.replace(classNamePattern, `className="${mergedClasses.join(' ')}"`)
-    } else {
-      // Add new className attribute
-      updatedElement = match.replace(afterId, ` className="${newClassName}"${afterId}`)
-    }
-    
-    // Note: We don't remove data-visual-id as it's permanently injected by AST parser
-    
+    console.log(`✅ Updated ${tagName} element using tag-based fallback`)
     wasUpdated = true
-    return updatedElement
+    return `${openTag}${sanitizedText}${closeTag}`
   })
   
+  // If specific tag failed, try common alternatives based on the tag type
+  if (!wasUpdated) {
+    console.log(`❌ Tag-based fallback failed - no ${tagName} element found`)
+    
+    // Try alternative elements based on context
+    const alternativeElements = getAlternativeElements(tagName)
+    for (const altTag of alternativeElements) {
+      console.log(`🔄 Trying alternative element: ${altTag}`)
+      const altPattern = new RegExp(`(<${altTag}[^>]*>)([\\s\\S]*?)(<\/${altTag}>)`, 'i')
+      
+      updatedContent = updatedContent.replace(altPattern, (match, openTag, innerContent, closeTag) => {
+        if (wasUpdated) return match
+        
+        console.log(`✅ Updated ${altTag} element using alternative fallback`)
+        wasUpdated = true
+        return `${openTag}${sanitizedText}${closeTag}`
+      })
+      
+      if (wasUpdated) break
+    }
+  }
+  
+  if (!wasUpdated) {
+    console.log(`❌ All tag-based fallbacks failed`)
+  }
   
   return updatedContent
+}
+
+function getAlternativeElements(originalTag) {
+  const alternatives = {
+    'li': ['p', 'div', 'span'], // List items often become paragraphs or divs
+    'p': ['div', 'span', 'li'], // Paragraphs might be divs or spans
+    'span': ['p', 'div', 'li'], // Spans might be paragraphs or divs
+    'div': ['p', 'section', 'article'], // Divs might be paragraphs or semantic elements
+    'h1': ['h2', 'h3', 'div', 'p'], // Headings might be other headings or text elements
+    'h2': ['h1', 'h3', 'div', 'p'],
+    'h3': ['h2', 'h4', 'div', 'p'],
+    'h4': ['h3', 'h5', 'div', 'p'],
+    'h5': ['h4', 'h6', 'div', 'p'],
+    'h6': ['h5', 'div', 'p']
+  }
+  
+  return alternatives[originalTag] || ['div', 'p', 'span'] // Default alternatives
+}
+
+function updateClassNameById(content, visualId, newClassName) {
+  if (!newClassName) {
+    return content
+  }
+  
+  // Try visual ID first if available
+  if (visualId) {
+    const elementPattern = new RegExp(`(<[^>]*)(data-visual-id="${visualId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}")([^>]*>)`, 'g')
+    
+    let updatedContent = content
+    let wasUpdated = false
+    
+    updatedContent = updatedContent.replace(elementPattern, (match, _beforeId, _visualIdAttr, afterId) => {
+      if (wasUpdated) return match
+      
+      // Check if className already exists in the element
+      const classNamePattern = /className=["']([^"']*)["']/
+      const classNameMatch = match.match(classNamePattern)
+      
+      let updatedElement
+      if (classNameMatch) {
+        // Update existing className
+        const existingClasses = classNameMatch[1].split(' ').filter(cls => cls.trim())
+        const newClasses = newClassName.split(' ').filter(cls => cls.trim())
+        
+        // Remove conflicting classes and add new ones
+        const cleanedClasses = removeConflictingTailwindClasses(existingClasses, newClasses)
+        const mergedClasses = [...new Set([...cleanedClasses, ...newClasses])]
+        
+        updatedElement = match.replace(classNamePattern, `className="${mergedClasses.join(' ')}"`)
+      } else {
+        // Add new className attribute
+        updatedElement = match.replace(afterId, ` className="${newClassName}"${afterId}`)
+      }
+      
+      wasUpdated = true
+      return updatedElement
+    })
+    
+    if (wasUpdated) {
+      return updatedContent
+    }
+  }
+  
+  // Fallback: try to update the first matching element by tag name if visualId contains tag info
+  if (visualId && visualId.includes('_')) {
+    const parts = visualId.split('_')
+    if (parts.length >= 2) {
+      const tagName = parts[1] // Extract tag name from visualId pattern like "Page_h1_0"
+      console.log(`🔄 Using tag-based className fallback for ${tagName}`)
+      const tagPattern = new RegExp(`(<${tagName}[^>]*>)`, 'i')
+      
+      let updatedContent = content
+      let wasUpdated = false
+      
+      updatedContent = updatedContent.replace(tagPattern, (match) => {
+        if (wasUpdated) return match
+        
+        const classNamePattern = /className=["']([^"']*)["']/
+        const classNameMatch = match.match(classNamePattern)
+        
+        let updatedElement
+        if (classNameMatch) {
+          const existingClasses = classNameMatch[1].split(' ').filter(cls => cls.trim())
+          const newClasses = newClassName.split(' ').filter(cls => cls.trim())
+          const cleanedClasses = removeConflictingTailwindClasses(existingClasses, newClasses)
+          const mergedClasses = [...new Set([...cleanedClasses, ...newClasses])]
+          updatedElement = match.replace(classNamePattern, `className="${mergedClasses.join(' ')}"`)
+        } else {
+          updatedElement = match.replace('>', ` className="${newClassName}">`)
+        }
+        
+        console.log(`✅ Updated ${tagName} className using tag-based fallback`)
+        wasUpdated = true
+        return updatedElement
+      })
+      
+      if (wasUpdated) {
+        return updatedContent
+      } else {
+        console.log(`❌ Tag-based className fallback failed - no ${tagName} element found`)
+        
+        // Try alternative elements
+        const alternativeElements = getAlternativeElements(tagName)
+        for (const altTag of alternativeElements) {
+          console.log(`🔄 Trying alternative className element: ${altTag}`)
+          const altPattern = new RegExp(`(<${altTag}[^>]*>)`, 'i')
+          
+          updatedContent = updatedContent.replace(altPattern, (match) => {
+            if (wasUpdated) return match
+            
+            const classNamePattern = /className=["']([^"']*)["']/
+            const classNameMatch = match.match(classNamePattern)
+            
+            let updatedElement
+            if (classNameMatch) {
+              const existingClasses = classNameMatch[1].split(' ').filter(cls => cls.trim())
+              const newClasses = newClassName.split(' ').filter(cls => cls.trim())
+              const cleanedClasses = removeConflictingTailwindClasses(existingClasses, newClasses)
+              const mergedClasses = [...new Set([...cleanedClasses, ...newClasses])]
+              updatedElement = match.replace(classNamePattern, `className="${mergedClasses.join(' ')}"`)
+            } else {
+              updatedElement = match.replace('>', ` className="${newClassName}">`)
+            }
+            
+            console.log(`✅ Updated ${altTag} className using alternative fallback`)
+            wasUpdated = true
+            return updatedElement
+          })
+          
+          if (wasUpdated) {
+            return updatedContent
+          }
+        }
+      }
+    }
+  }
+  
+  // Final fallback: use general className update
+  return updateClassName(content, newClassName)
 }
 
 

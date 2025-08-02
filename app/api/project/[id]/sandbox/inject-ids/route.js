@@ -7,7 +7,9 @@ import path from 'path';
 
 export async function POST(request, { params }) {
   try {
-    const { id } = params;
+    const { id } = await params;
+    const body = await request.json().catch(() => ({}));
+    const { targetFile } = body;
     const client = new Daytona({ apiKey: process.env.DAYTONA_API_KEY });
     
     // Get project to find sandbox ID using service client
@@ -163,6 +165,51 @@ export async function POST(request, { params }) {
             .join('');
         }
 
+        checkIfFileNeedsProcessing(filePath) {
+          try {
+            const sourceCode = fs.readFileSync(filePath, 'utf8');
+            
+            const ast = parser.parse(sourceCode, {
+              sourceType: 'module',
+              allowImportExportEverywhere: true,
+              allowReturnOutsideFunction: true,
+              plugins: [
+                'jsx',
+                'typescript',
+                'decorators-legacy',
+                'classProperties',
+                'objectRestSpread',
+                'functionBind',
+                'exportDefaultFrom',
+                'exportNamespaceFrom',
+                'dynamicImport',
+                'nullishCoalescingOperator',
+                'optionalChaining'
+              ]
+            });
+
+            let elementsWithoutIds = 0;
+            
+            traverse(ast, {
+              JSXElement: (path) => {
+                if (!this.hasVisualId(path.node)) {
+                  elementsWithoutIds++;
+                }
+              },
+              JSXFragment: (path) => {
+                if (!this.hasVisualId(path.node)) {
+                  elementsWithoutIds++;
+                }
+              }
+            });
+
+            return elementsWithoutIds > 0;
+          } catch (error) {
+            console.error(\`Error checking file \${filePath}:\`, error);
+            return true; // Process on error to be safe
+          }
+        }
+
         async processDirectory(dirPath) {
           const results = [];
           
@@ -223,18 +270,66 @@ export async function POST(request, { params }) {
 
       // Process the workspace
       const injector = new ASTIdInjector();
-      injector.processDirectory('/workspace/project').then(results => {
-      }).catch(error => {
-        console.error('Error:', error);
-        process.exit(1);
-      });
+      const targetFile = process.argv[2];
+      
+      if (targetFile) {
+        // Process only the specific file
+        const fullPath = path.join('/workspace/project', targetFile);
+        if (fs.existsSync(fullPath)) {
+          const ext = path.extname(fullPath);
+          if (['.jsx', '.tsx', '.js', '.ts'].includes(ext)) {
+            try {
+              // Check if file needs processing by counting elements without IDs
+              const needsProcessing = injector.checkIfFileNeedsProcessing(fullPath);
+              
+              if (needsProcessing) {
+                const modifiedCode = injector.injectIds(fullPath);
+                fs.writeFileSync(fullPath, modifiedCode, 'utf8');
+                console.log(JSON.stringify([{
+                  file: fullPath,
+                  status: 'success',
+                  elementsProcessed: injector.elementCounter
+                }]));
+              } else {
+                console.log(JSON.stringify([{
+                  file: fullPath,
+                  status: 'skipped',
+                  reason: 'All elements already have visual IDs',
+                  elementsProcessed: 0
+                }]));
+              }
+            } catch (error) {
+              console.log(JSON.stringify([{
+                file: fullPath,
+                status: 'error',
+                error: error.message
+              }]));
+            }
+          }
+        } else {
+          console.log(JSON.stringify([{
+            file: fullPath,
+            status: 'error',
+            error: 'File not found'
+          }]));
+        }
+      } else {
+        // Process entire directory
+        injector.processDirectory('/workspace/project').then(results => {
+          console.log(JSON.stringify(results));
+        }).catch(error => {
+          console.error('Error:', error);
+          process.exit(1);
+        });
+      }
     `;
 
     // Execute the injection script in the sandbox
-    const result = await sandbox.process.executeCommand(
-      `node -e "${injectionScript.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`,
-      '/workspace/project'
-    );
+    const command = targetFile 
+      ? `node -e "${injectionScript.replace(/"/g, '\\"').replace(/\n/g, '\\n')}" "${targetFile}"`
+      : `node -e "${injectionScript.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`;
+    
+    const result = await sandbox.process.executeCommand(command, '/workspace/project');
 
     let processedFiles = [];
     try {

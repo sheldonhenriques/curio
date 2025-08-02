@@ -81,15 +81,29 @@ export default function WebserverNode({ id, data, selected }) {
   }, [id, setNodes])
 
   const handleSelectModeToggle = useCallback(() => {
-    setIsSelectModeActive(prev => !prev)
-    if (isSelectModeActive) {
-      setSelectedElement(null)
+    const newSelectModeActive = !isSelectModeActive
+    setIsSelectModeActive(newSelectModeActive)
+    
+    if (newSelectModeActive) {
+      // When activating select mode, mark this node as active
+      setSelectedElement(null, id) // Mark this node as active without selecting an element
+    } else {
+      // When deactivating select mode, clear selection and active node
+      setSelectedElement(null, null) // Clear both element and active node
     }
-  }, [isSelectModeActive, setSelectedElement])
+  }, [isSelectModeActive, setSelectedElement, id])
 
   const handleElementSelected = useCallback((element) => {
-    setSelectedElement(element)
-  }, [setSelectedElement])
+    // Enhance element with node-specific data
+    const enhancedElement = {
+      ...element,
+      filePath: data.filePath || null, // Add the specific file path from node data
+      currentRoute: data.route || extractPath(data.url) // Add current route from node data
+    }
+    
+    // Use the enhanced setSelectedElement that includes nodeId tracking
+    setSelectedElement(enhancedElement, id)
+  }, [setSelectedElement, data.filePath, data.route, data.url, id, data.title])
 
 
   const handleUpdateElementRef = useCallback((updateFn) => {

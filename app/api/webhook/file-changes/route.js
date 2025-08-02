@@ -89,7 +89,7 @@ export async function POST(request) {
 
     // Process 'add' and 'scan' events for new/existing pages/components
     if (eventType === 'add' || eventType === 'scan') {
-      await handleNewPageComponent(supabase, project, routeInfo, filePath, eventType === 'scan');
+      await handleNewPageComponent(supabase, project, routeInfo, filePath, eventType === 'scan', eventType);
     } else if (eventType === 'unlink') {
       await handleDeletedPageComponent(supabase, project, routeInfo);
     }
@@ -109,7 +109,7 @@ export async function POST(request) {
   }
 }
 
-async function handleNewPageComponent(supabase, project, routeInfo, filePath, isInitialScan = false) {
+async function handleNewPageComponent(supabase, project, routeInfo, filePath, isInitialScan = false, eventType = null) {
   const { route, type, isAppRouter, relativePath } = routeInfo;
 
   // Skip if it's not a page component (layout, loading, error components)
@@ -207,6 +207,17 @@ async function handleNewPageComponent(supabase, project, routeInfo, filePath, is
     : `✅ Created webserver node for new route: ${route}`;
   console.log(logMessage);
 
+  // For newly created route files (not initial scans), inject visual IDs
+  if (!isInitialScan && eventType === 'add') {
+    try {
+      console.log(`🔧 Injecting visual IDs for new route file: ${relativePath}`);
+      await injectVisualIdsForNewFile(project.id, relativePath);
+    } catch (error) {
+      console.error('❌ Failed to inject visual IDs for new file:', error);
+      // Don't fail the webhook if ID injection fails
+    }
+  }
+
   // Broadcast node creation to WebSocket clients
   try {
     const { broadcastNodeCreated } = await import('@/services/backgroundJobs.js');
@@ -230,6 +241,32 @@ async function handleNewPageComponent(supabase, project, routeInfo, filePath, is
   }
 
   return newNode;
+}
+
+/**
+ * Inject visual IDs into a newly created route file
+ */
+async function injectVisualIdsForNewFile(projectId, filePath) {
+  try {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_URL || 'http://localhost:3000'}/api/project/${projectId}/sandbox/inject-ids`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        targetFile: filePath // Inject IDs only for this specific file
+      })
+    });
+
+    const result = await response.json();
+    if (result.success) {
+      console.log(`✅ Visual IDs injected for file: ${filePath}`);
+    } else {
+      console.error(`❌ Failed to inject visual IDs for ${filePath}:`, result.error);
+    }
+  } catch (error) {
+    console.error(`❌ Error calling inject-ids API for ${filePath}:`, error);
+  }
 }
 
 async function handleDeletedPageComponent(supabase, project, routeInfo) {
